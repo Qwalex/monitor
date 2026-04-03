@@ -137,8 +137,14 @@ export function addServiceMonitoring(
     service: Service,
     onStatusChange?: (service: Service, isUp: boolean, downtime?: number) => void
 ): void {
+    console.log(`[Services] addServiceMonitoring called for: ${service.name} (id=${service.id})`);
     const callback = onStatusChange || (() => {});
-    startMonitoringService(service, callback);
+    try {
+        startMonitoringService(service, callback);
+        console.log(`[Services] Monitoring started successfully for: ${service.name}`);
+    } catch (error) {
+        console.error(`[Services] Failed to start monitoring for ${service.name}:`, error);
+    }
 }
 
 export function stopServiceMonitoring(serviceId: number): void {

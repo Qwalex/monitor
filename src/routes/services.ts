@@ -82,7 +82,9 @@ router.post('/', (req: Request, res: Response) => {
             last_status: null,
             downtime_started_at: null,
         };
+        console.log(`[Services] Starting monitoring for: ${name} (${url})`);
         addServiceMonitoring(newService);
+        console.log(`[Services] Monitoring started for service id=${id}`);
 
         res.status(201).json({ id, name, url, expected_status, check_interval });
     } catch (error) {
