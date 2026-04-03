@@ -150,8 +150,6 @@
         #individual-charts .card {
             margin-top: 24px;
         }
-            padding: 24px;
-        }
 
         .card-header {
             display: flex;
@@ -1075,7 +1073,6 @@
                     const balancesHtml = account.balances.length > 0
                         ? account.balances.map(b => `
                             <div class="balance-card-item">
-                                <span class="coin">${b.coin}</span>
                                 <span class="amount">${b.balance.toFixed(4)}</span>
                             </div>
                         `).join('')
