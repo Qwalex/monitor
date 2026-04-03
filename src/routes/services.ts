@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDatabase, saveDatabase } from '../database.js';
 import { startServiceMonitoring, addServiceMonitoring, stopServiceMonitoring } from '../services.js';
+import { sendServiceDownAlert, sendServiceUpAlert } from '../bot/telegram.js';
 
 const router = Router();
 
@@ -96,7 +97,13 @@ router.post('/', (req: Request, res: Response, next) => {
         console.log(`[Services] Starting monitoring for: ${name} (${url})`);
 
         // Start monitoring immediately (first check will happen synchronously)
-        addServiceMonitoring(newService);
+        addServiceMonitoring(newService, (service, isUp, downtime) => {
+            if (isUp) {
+                sendServiceUpAlert(service, downtime);
+            } else {
+                sendServiceDownAlert(service);
+            }
+        });
 
         console.log(`[Services] Monitoring started for service id=${id}`);
 

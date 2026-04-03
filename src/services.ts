@@ -101,6 +101,7 @@ async function handleCheckResult(
 
     const prevStatus = service.last_status;
     const wasDown = prevStatus !== null && prevStatus !== service.expected_status;
+    const isFirstCheck = prevStatus === null;
 
     if (isUp) {
         let downtime: number | undefined;
@@ -119,7 +120,8 @@ async function handleCheckResult(
                 [now, result.status, service.id]);
         }
     } else {
-        if (!wasDown) {
+        // Only notify if this is NOT the first check (we don't want to spam on first detection)
+        if (!wasDown && !isFirstCheck) {
             db.run('UPDATE services SET last_check_at = ?, last_status = ?, downtime_started_at = ? WHERE id = ?',
                 [now, result.status, now, service.id]);
 
