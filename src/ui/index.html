@@ -164,6 +164,84 @@
             overflow-x: auto;
         }
 
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .balance-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: border-color 0.2s ease, transform 0.2s ease;
+        }
+
+        .balance-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+
+        .balance-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .balance-card-account {
+            font-weight: 600;
+            font-size: 16px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .balance-card-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .balance-card-body {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .balance-card-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: rgba(88, 166, 255, 0.05);
+            border-radius: 8px;
+        }
+
+        .balance-card-item .coin {
+            font-weight: 500;
+            color: var(--primary);
+        }
+
+        .balance-card-item .amount {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 15px;
+            color: var(--success);
+        }
+
+        .balance-card-empty {
+            color: var(--text-muted);
+            font-size: 14px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .balance-card-synced {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -616,21 +694,17 @@
 
             .header-actions .btn {
                 width: 100%;
+                justify-content: center;
             }
 
             h1 {
                 font-size: 22px;
             }
-
-            .tabs {
-                flex-direction: column;
-                gap: 4px;
-            }
-
             .tab {
                 width: 100%;
                 text-align: center;
                 border-radius: 8px;
+                padding: 10px;
             }
 
             .tab.active {
@@ -714,26 +788,10 @@
                 <div class="card-header">
                     <h2 class="card-title">Текущие балансы</h2>
                 </div>
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Аккаунт</th>
-                                <th>Монета</th>
-                                <th>Баланс</th>
-                                <th>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody id="balances-table">
-                            <tr>
-                                <td colspan="4">
-                                    <div class="loading">
-                                        <div class="spinner"></div>
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div id="balances-container" class="cards-grid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
                 </div>
             </div>
         </div>
