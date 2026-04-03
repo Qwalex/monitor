@@ -773,13 +773,19 @@
         let balanceChart = null;
         let currentPeriod = '24h';
 
+        let isInitialLoad = true;
+
         document.addEventListener('DOMContentLoaded', function() {
             loadBalances();
         });
 
-        async function loadBalances() {
+        async function loadBalances(showLoading = false) {
             const tbody = document.getElementById('balances-table');
-            tbody.innerHTML = '<tr><td colspan="4"><div class="loading"><div class="spinner"></div></div></td></tr>';
+            
+            if (showLoading || isInitialLoad) {
+                tbody.innerHTML = '<tr><td colspan="4"><div class="loading"><div class="spinner"></div></div></td></tr>';
+                isInitialLoad = false;
+            }
 
             try {
                 const response = await fetch(basePath + '/api/balances');
@@ -1064,7 +1070,7 @@
             document.querySelectorAll('.tab')[tabIndex].classList.add('active');
             document.getElementById(`${tab}-tab`).style.display = 'block';
 
-            if (tab === 'balances') loadBalances();
+            if (tab === 'balances') loadBalances(false);
             if (tab === 'services') loadServices();
             if (tab === 'chart') loadChart();
             if (tab === 'history') loadHistory();
@@ -1132,7 +1138,7 @@
                 if (response.ok) {
                     showToast('Аккаунт добавлен', 'success');
                     closeAddModal();
-                    loadBalances();
+                    loadBalances(false);
                 } else {
                     const error = await response.json();
                     showToast(error.error || 'Ошибка добавления', 'error');
@@ -1149,7 +1155,7 @@
                 const response = await fetch(basePath + `/api/accounts/${id}`, { method: 'DELETE' });
                 if (response.ok) {
                     showToast('Аккаунт удалён', 'success');
-                    loadBalances();
+                    loadBalances(false);
                 } else {
                     showToast('Ошибка удаления', 'error');
                 }
@@ -1163,7 +1169,7 @@
                 const response = await fetch(basePath + `/api/balances/sync/${id}`, { method: 'POST' });
                 if (response.ok) {
                     showToast('Баланс синхронизирован', 'success');
-                    loadBalances();
+                    loadBalances(false);
                 } else {
                     showToast('Ошибка синхронизации', 'error');
                 }

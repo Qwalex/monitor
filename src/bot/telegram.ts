@@ -174,7 +174,8 @@ async function getBalancesMessage(): Promise<string> {
         const walletBalance = await getAccountBalance(account);
         
         if (walletBalance && walletBalance.coin) {
-            const balances = walletBalance.coin.filter(c => parseFloat(c.walletBalance || '0') > 0);
+            const balances = walletBalance.coin
+                .filter(c => c.coin === 'USDT' && parseFloat(c.walletBalance || '0') > 0);
             
             if (balances.length > 0) {
                 hasBalances = true;
@@ -258,6 +259,7 @@ async function syncAllBalances(): Promise<void> {
         
         if (walletBalance && walletBalance.coin) {
             for (const coin of walletBalance.coin) {
+                if (coin.coin !== 'USDT') continue;
                 const balance = parseFloat(coin.walletBalance || '0');
                 if (balance > 0) {
                     db.run(
