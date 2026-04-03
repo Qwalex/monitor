@@ -472,6 +472,70 @@
             gap: 8px;
         }
 
+        .history-group {
+            margin-bottom: 24px;
+        }
+
+        .history-group-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid var(--border-color);
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .history-group-header:hover {
+            background: rgba(88, 166, 255, 0.15);
+        }
+
+        .history-group-header .account-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .history-group-header .record-count {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .history-group-toggle {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            transition: transform 0.2s ease;
+        }
+
+        .history-group.collapsed .history-group-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .history-group.collapsed .history-group-content {
+            display: none;
+        }
+
+        .history-group-content {
+            border: 1px solid var(--border-color);
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            overflow: hidden;
+        }
+
+        .history-group.collapsed .history-group-content {
+            display: none;
+        }
+
+        .history-group table {
+            margin: 0;
+        }
+
         .icon-btn {
             width: 32px;
             height: 32px;
@@ -955,27 +1019,74 @@
                     return;
                 }
 
-                const html = data.map(item => {
-                    const date = new Date(item.recordedAt);
-                    const dateStr = date.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' });
-                    const timeStr = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                // Group by account name
+                const grouped = {};
+                data.forEach(item => {
+                    if (!grouped[item.accountName]) {
+                        grouped[item.accountName] = [];
+                    }
+                    grouped[item.accountName].push(item);
+                });
+
+                const html = Object.entries(grouped).map(([accountName, items]) => {
+                    const itemsHtml = items.map(item => {
+                        const date = new Date(item.recordedAt);
+                        const dateStr = date.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' });
+                        const timeStr = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+                        return `
+                            <tr>
+                                <td>${dateStr} ${timeStr}</td>
+                                <td><span class="coin-badge">${item.coin}</span></td>
+                                <td class="balance-value">${item.balance.toFixed(4)}</td>
+                            </tr>
+                        `;
+                    }).join('');
 
                     return `
-                        <tr>
-                            <td>${dateStr} ${timeStr}</td>
-                            <td>${item.accountName}</td>
-                            <td><span class="coin-badge">${item.coin}</span></td>
-                            <td class="balance-value">${item.balance.toFixed(4)}</td>
-                        </tr>
+                        <div class="history-group" data-account="${accountName}">
+                            <div class="history-group-header" onclick="toggleHistoryGroup('${accountName}')">
+                                <div class="history-group-toggle">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </div>
+                                <span class="account-name">${accountName}</span>
+                                <span class="record-count">${items.length} записей</span>
+                            </div>
+                            <div class="history-group-content">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Дата</th>
+                                            <th>Монета</th>
+                                            <th>Баланс</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${itemsHtml}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     `;
                 }).join('');
 
-                tbody.innerHTML = html;
+                tbody.innerHTML = `<tr><td colspan="4">${html}</td></tr>`;
             } catch (error) {
                 console.error('Error loading history:', error);
                 showToast('Ошибка загрузки истории', 'error');
             }
         }
+
+        function toggleHistoryGroup(accountName) {
+            const group = document.querySelector(`.history-group[data-account="${accountName}"]`);
+            if (group) {
+                group.classList.toggle('collapsed');
+            }
+        }
+
+        window.toggleHistoryGroup = toggleHistoryGroup;
 
         async function loadChart() {
             try {
@@ -1281,6 +1392,7 @@
         window.addService = addService;
         window.deleteService = deleteService;
         window.updatePeriod = updatePeriod;
+        window.toggleHistoryGroup = toggleHistoryGroup;
     </script>
 </body>
 </html>
