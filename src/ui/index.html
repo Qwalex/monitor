@@ -2,11 +2,18 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#58a6ff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Balance Monitor">
+    <meta name="description" content="Monitor Bybit account balances with web interface and Telegram bot">
     <title>Bybit Balance Monitor</title>
+    <link rel="manifest" href="/monitor/manifest.json">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="apple-touch-icon" href="/monitor/icon-192.png">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         :root {
@@ -240,6 +247,89 @@
         .balance-card-synced {
             font-size: 12px;
             color: var(--text-muted);
+        }
+
+        .service-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: border-color 0.2s ease;
+        }
+
+        .service-card:hover {
+            border-color: var(--primary);
+        }
+
+        .service-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .service-card-name {
+            font-weight: 600;
+            font-size: 15px;
+            color: var(--text-primary);
+        }
+
+        .service-card-url {
+            font-size: 12px;
+            color: var(--text-muted);
+            word-break: break-all;
+        }
+
+        .service-card-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .service-card-status.online {
+            background: rgba(63, 185, 80, 0.15);
+            color: var(--success);
+        }
+
+        .service-card-status.offline {
+            background: rgba(248, 81, 73, 0.15);
+            color: var(--danger);
+        }
+
+        .service-card-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .service-card-status.online .service-card-status-dot {
+            background: var(--success);
+        }
+
+        .service-card-status.offline .service-card-status-dot {
+            background: var(--danger);
+        }
+
+        .service-card-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .service-card-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: auto;
         }
 
         table {
@@ -808,22 +898,13 @@
                         Добавить сервис
                     </button>
                 </div>
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Название</th>
-                                <th>URL</th>
-                                <th>Статус</th>
-                                <th>Последняя проверка</th>
-                                <th>Время отклика</th>
-                                <th>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody id="services-table">
-                            <tr>
-                                <td colspan="6">
-                                    <div class="loading">
+                <div id="services-container" class="cards-grid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
                                         <div class="spinner"></div>
                                     </div>
                                 </td>
@@ -967,10 +1048,10 @@
         });
 
         async function loadBalances(showLoading = false) {
-            const tbody = document.getElementById('balances-table');
-            
+            const container = document.getElementById('balances-container');
+
             if (showLoading || isInitialLoad) {
-                tbody.innerHTML = '<tr><td colspan="4"><div class="loading"><div class="spinner"></div></div></td></tr>';
+                container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
                 isInitialLoad = false;
             }
 
@@ -979,73 +1060,54 @@
                 const data = await response.json();
 
                 if (data.length === 0) {
-                    tbody.innerHTML = `
-                        <tr>
-                            <td colspan="4">
-                                <div class="empty-state">
-                                    <div class="empty-state-icon">📊</div>
-                                    <p class="empty-state-text">Нет добавленных аккаунтов</p>
-                                    <button class="btn btn-primary" onclick="openAddModal()">Добавить аккаунт</button>
-                                </div>
-                            </td>
-                        </tr>
+                    container.innerHTML = `
+                        <div class="empty-state" style="grid-column: 1 / -1;">
+                            <div class="empty-state-icon">📊</div>
+                            <p class="empty-state-text">Нет добавленных аккаунтов</p>
+                            <button class="btn btn-primary" onclick="openAddModal()">Добавить аккаунт</button>
+                        </div>
                     `;
                     return;
                 }
 
                 let html = '';
                 data.forEach(account => {
-                    if (account.balances.length === 0) {
-                        html += `
-                            <tr>
-                                <td>${account.accountName}</td>
-                                <td colspan="2" style="color: var(--text-muted);">Нет баланса</td>
-                                <td>
-                                    <div class="account-actions">
-                                        <button class="icon-btn sync" onclick="syncAccount(${account.accountId})" title="Синхронизировать">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M23 4v6h-6M1 20v-6h6"/>
-                                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                                            </svg>
-                                        </button>
-                                        <button class="icon-btn danger" onclick="deleteAccount(${account.accountId})" title="Удалить">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        `;
-                    } else {
-                        account.balances.forEach((balance, index) => {
-                            html += `
-                                <tr>
-                                    ${index === 0 ? `<td rowspan="${account.balances.length}">${account.accountName}</td>` : ''}
-                                    <td><span class="coin-badge">${balance.coin}</span></td>
-                                    <td class="balance-value balance-positive">${balance.balance.toFixed(4)}</td>
-                                    ${index === 0 ? `<td rowspan="${account.balances.length}">
-                                        <div class="account-actions">
-                                            <button class="icon-btn sync" onclick="syncAccount(${account.accountId})" title="Синхронизировать">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                    <path d="M23 4v6h-6M1 20v-6h6"/>
-                                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                                                </svg>
-                                            </button>
-                                            <button class="icon-btn danger" onclick="deleteAccount(${account.accountId})" title="Удалить">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                                </svg>
-                                            </button>
-                                        </div>
-                                    </td>` : ''}
-                                </tr>
-                            `;
-                        });
-                    }
+                    const balancesHtml = account.balances.length > 0
+                        ? account.balances.map(b => `
+                            <div class="balance-card-item">
+                                <span class="coin">${b.coin}</span>
+                                <span class="amount">${b.balance.toFixed(4)}</span>
+                            </div>
+                        `).join('')
+                        : '<div class="balance-card-empty">Нет баланса</div>';
+
+                    html += `
+                        <div class="balance-card">
+                            <div class="balance-card-header">
+                                <span class="balance-card-account">${account.accountName}</span>
+                                <div class="balance-card-actions">
+                                    <button class="icon-btn sync" onclick="syncAccount(${account.accountId})" title="Синхронизировать">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M23 4v6h-6M1 20v-6h6"/>
+                                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                                        </svg>
+                                    </button>
+                                    <button class="icon-btn danger" onclick="deleteAccount(${account.accountId})" title="Удалить">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="balance-card-body">
+                                ${balancesHtml}
+                            </div>
+                        </div>
+                    `;
                 });
 
-                tbody.innerHTML = html;
+                const container = document.getElementById('balances-container');
+                container.innerHTML = html;
             } catch (error) {
                 console.error('Error loading balances:', error);
                 showToast('Ошибка загрузки балансов', 'error');
@@ -1055,10 +1117,10 @@
         let servicesInitialLoad = true;
 
         async function loadServices(showLoading = false) {
-            const tbody = document.getElementById('services-table');
-            
+            const container = document.getElementById('services-container');
+
             if (showLoading || servicesInitialLoad) {
-                tbody.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div></div></td></tr>';
+                container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
                 servicesInitialLoad = false;
             }
 
@@ -1067,16 +1129,12 @@
                 const data = await response.json();
 
                 if (data.length === 0) {
-                    tbody.innerHTML = `
-                        <tr>
-                            <td colspan="6">
-                                <div class="empty-state">
-                                    <div class="empty-state-icon">🖥️</div>
-                                    <p class="empty-state-text">Нет мониторинговых сервисов</p>
-                                    <button class="btn btn-primary" onclick="openAddServiceModal()">Добавить сервис</button>
-                                </div>
-                            </td>
-                        </tr>
+                    container.innerHTML = `
+                        <div class="empty-state" style="grid-column: 1 / -1;">
+                            <div class="empty-state-icon">🖥️</div>
+                            <p class="empty-state-text">Нет мониторинговых сервисов</p>
+                            <button class="btn btn-primary" onclick="openAddServiceModal()">Добавить сервис</button>
+                        </div>
                     `;
                     return;
                 }
@@ -1084,34 +1142,41 @@
                 let html = '';
                 for (const service of data) {
                     const isUp = service.last_status === service.expected_status;
-                    const statusClass = isUp ? 'status-up' : 'status-down';
                     const statusText = isUp ? 'Онлайн' : 'Офлайн';
+                    const statusClass = isUp ? 'online' : 'offline';
 
                     const lastCheck = service.last_check_at
-                        ? new Date(service.last_check_at).toLocaleString('ru-RU')
-                        : 'Никогда';
+                        ? new Date(service.last_check_at).toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })
+                        : 'Не проверено';
 
                     html += `
-                        <tr>
-                            <td><strong>${service.name}</strong></td>
-                            <td><code style="font-size: 12px; color: var(--text-secondary);">${service.url}</code></td>
-                            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                            <td>${lastCheck}</td>
-                            <td>${service.last_status !== null ? '—' : '—'}</td>
-                            <td>
-                                <div class="account-actions">
-                                    <button class="icon-btn danger" onclick="deleteService(${service.id})" title="Удалить">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                        </svg>
-                                    </button>
+                        <div class="service-card">
+                            <div class="service-card-header">
+                                <div>
+                                    <div class="service-card-name">${service.name}</div>
+                                    <div class="service-card-url">${service.url}</div>
                                 </div>
-                            </td>
-                        </tr>
+                                <div class="service-card-status ${statusClass}">
+                                    <span class="service-card-status-dot"></span>
+                                    ${statusText}
+                                </div>
+                            </div>
+                            <div class="service-card-meta">
+                                <span>Интервал: ${service.check_interval}с</span>
+                                <span>Проверка: ${lastCheck}</span>
+                            </div>
+                            <div class="service-card-actions">
+                                <button class="icon-btn danger" onclick="deleteService(${service.id})" title="Удалить">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
                     `;
                 }
 
-                tbody.innerHTML = html;
+                container.innerHTML = html;
 
                 setTimeout(loadServices, 5000);
             } catch (error) {
@@ -1616,6 +1681,19 @@
         window.deleteService = deleteService;
         window.updatePeriod = updatePeriod;
         window.toggleHistoryGroup = toggleHistoryGroup;
+
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/monitor/service-worker.js')
+                    .then((registration) => {
+                        console.log('SW registered:', registration.scope);
+                    })
+                    .catch((error) => {
+                        console.log('SW registration failed:', error);
+                    });
+            });
+        }
     </script>
 </body>
 </html>
