@@ -65,11 +65,20 @@ router.post('/', (req: Request, res: Response, next) => {
             [name, url, expected_status, check_interval, new Date().toISOString()]
         );
 
+        // Get the last inserted ID before saving
+        const result = db.exec('SELECT last_insert_rowid() as id');
+        let id = result[0].values[0][0] as number;
+
+        // Save after getting ID
         saveDatabase();
 
-        // Get the last inserted ID
-        const result = db.exec('SELECT last_insert_rowid() as id, * FROM services ORDER BY id DESC LIMIT 1');
-        const id = result[0].values[0][0] as number;
+        // If ID is 0, fetch the max ID as fallback
+        if (id === 0) {
+            const maxResult = db.exec('SELECT MAX(id) as max_id FROM services');
+            id = maxResult[0].values[0][0] as number;
+        }
+
+        console.log(`[Services] Inserted service with id=${id}`);
 
         // Start monitoring the new service
         const newService: Service = {
