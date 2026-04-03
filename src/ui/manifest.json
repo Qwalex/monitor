@@ -1,0 +1,21 @@
+{
+  "name": "Bybit Balance Monitor",
+  "short_name": "Balance Monitor",
+  "description": "Monitor Bybit account balances with web interface and Telegram bot",
+  "start_url": "/monitor/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#58a6ff",
+  "icons": [
+    {
+      "src": "/monitor/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/monitor/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
