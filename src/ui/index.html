@@ -865,9 +865,15 @@
             }
         }
 
-        async function loadServices() {
+        let servicesInitialLoad = true;
+
+        async function loadServices(showLoading = false) {
             const tbody = document.getElementById('services-table');
-            tbody.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div></div></td></tr>';
+            
+            if (showLoading || servicesInitialLoad) {
+                tbody.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div></div></td></tr>';
+                servicesInitialLoad = false;
+            }
 
             try {
                 const response = await fetch(basePath + '/api/services');
@@ -1071,7 +1077,7 @@
             document.getElementById(`${tab}-tab`).style.display = 'block';
 
             if (tab === 'balances') loadBalances(false);
-            if (tab === 'services') loadServices();
+            if (tab === 'services') loadServices(false);
             if (tab === 'chart') loadChart();
             if (tab === 'history') loadHistory();
         }
@@ -1180,7 +1186,7 @@
 
         async function syncAllBalances() {
             showToast('Синхронизация...', 'success');
-            await loadBalances();
+            await loadBalances(false);
             showToast('Синхронизация завершена', 'success');
         }
 
@@ -1213,7 +1219,7 @@
                 if (response.ok) {
                     showToast('Сервис добавлен', 'success');
                     closeAddServiceModal();
-                    loadServices();
+                    loadServices(false);
                 } else {
                     const error = await response.json();
                     showToast(error.error || 'Ошибка добавления', 'error');
@@ -1230,7 +1236,7 @@
                 const response = await fetch(basePath + `/api/services/${id}`, { method: 'DELETE' });
                 if (response.ok) {
                     showToast('Сервис удалён', 'success');
-                    loadServices();
+                    loadServices(false);
                 } else {
                     showToast('Ошибка удаления', 'error');
                 }
