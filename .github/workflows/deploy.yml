@@ -70,12 +70,12 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             cd /root/monitor
-            
+
             # Pull latest image (this is the quick step with minimal downtime)
-            docker-compose pull
-            
+            docker compose pull
+
             # Restart container
-            docker-compose up -d
-            
+            docker compose up -d
+
             # Cleanup old images
             docker image prune -f
