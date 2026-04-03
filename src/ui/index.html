@@ -587,6 +587,96 @@
         .chart-container {
             position: relative;
             height: 300px;
+            min-height: 300px;
+        }
+
+        .chart-card {
+            margin-top: 24px;
+        }
+
+        .history-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .history-card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            background: rgba(88, 166, 255, 0.1);
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .history-card-header:hover {
+            background: rgba(88, 166, 255, 0.15);
+        }
+
+        .history-card-header .account-name {
+            font-weight: 600;
+            color: var(--primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .history-card-header .record-count {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .history-card-toggle {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+        }
+
+        .history-card .history-card-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .history-card:not(.collapsed) .history-card-toggle {
+            transform: rotate(0deg);
+        }
+
+        .history-card-content {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .history-card.collapsed .history-card-content {
+            display: none;
+        }
+
+        .history-card-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .history-card-item:last-child {
+            border-bottom: none;
+        }
+
+        .history-card-item .date {
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .history-card-item .coin {
+            color: var(--primary);
+            font-weight: 500;
+        }
+
+        .history-card-item .balance {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--success);
         }
 
         .loading {
@@ -924,11 +1014,13 @@
                         <button class="period-btn" onclick="setPeriod('all')">Всё</button>
                     </div>
                 </div>
-                <div class="chart-container">
+                <div class="chart-container" id="main-chart-container">
                     <canvas id="balanceChart"></canvas>
                 </div>
             </div>
-            <div id="individual-charts"></div>
+            <div class="card chart-card">
+                <div id="individual-charts"></div>
+            </div>
         </div>
 
         <div id="history-tab" class="tab-content" style="display: none;">
@@ -936,26 +1028,10 @@
                 <div class="card-header">
                     <h2 class="card-title">История изменений</h2>
                 </div>
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Дата</th>
-                                <th>Аккаунт</th>
-                                <th>Монета</th>
-                                <th>Баланс</th>
-                            </tr>
-                        </thead>
-                        <tbody id="history-table">
-                            <tr>
-                                <td colspan="4">
-                                    <div class="loading">
-                                        <div class="spinner"></div>
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div id="history-container" class="cards-grid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1183,23 +1259,19 @@
         }
 
         async function loadHistory() {
-            const tbody = document.getElementById('history-table');
-            tbody.innerHTML = '<tr><td colspan="4"><div class="loading"><div class="spinner"></div></div></td></tr>';
+            const container = document.getElementById('history-container');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
 
             try {
                 const response = await fetch(basePath + '/api/history/all?limit=50');
                 const data = await response.json();
 
                 if (data.length === 0) {
-                    tbody.innerHTML = `
-                        <tr>
-                            <td colspan="4">
-                                <div class="empty-state">
-                                    <div class="empty-state-icon">📜</div>
-                                    <p class="empty-state-text">Нет данных истории</p>
-                                </div>
-                            </td>
-                        </tr>
+                    container.innerHTML = `
+                        <div class="empty-state" style="grid-column: 1 / -1;">
+                            <div class="empty-state-icon">📜</div>
+                            <p class="empty-state-text">Нет данных истории</p>
+                        </div>
                     `;
                     return;
                 }
@@ -1220,18 +1292,18 @@
                         const timeStr = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
                         return `
-                            <tr>
-                                <td>${dateStr} ${timeStr}</td>
-                                <td><span class="coin-badge">${item.coin}</span></td>
-                                <td class="balance-value">${item.balance.toFixed(4)}</td>
-                            </tr>
+                            <div class="history-card-item">
+                                <span class="date">${dateStr} ${timeStr}</span>
+                                <span class="coin">${item.coin}</span>
+                                <span class="balance">${item.balance.toFixed(4)}</span>
+                            </div>
                         `;
                     }).join('');
 
                     return `
-                        <div class="history-group collapsed" data-account="${accountName}">
-                            <div class="history-group-header" onclick="toggleHistoryGroup('${accountName}')">
-                                <div class="history-group-toggle">
+                        <div class="history-card collapsed" data-account="${accountName}">
+                            <div class="history-card-header" onclick="toggleHistoryGroup('${accountName}')">
+                                <div class="history-card-toggle">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <polyline points="6 9 12 15 18 9"></polyline>
                                     </svg>
@@ -1239,25 +1311,14 @@
                                 <span class="account-name">${accountName}</span>
                                 <span class="record-count">${items.length} записей</span>
                             </div>
-                            <div class="history-group-content">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Дата</th>
-                                            <th>Монета</th>
-                                            <th>Баланс</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${itemsHtml}
-                                    </tbody>
-                                </table>
+                            <div class="history-card-content">
+                                ${itemsHtml}
                             </div>
                         </div>
                     `;
                 }).join('');
 
-                tbody.innerHTML = `<tr><td colspan="4">${html}</td></tr>`;
+                container.innerHTML = html;
             } catch (error) {
                 console.error('Error loading history:', error);
                 showToast('Ошибка загрузки истории', 'error');
@@ -1265,7 +1326,7 @@
         }
 
         function toggleHistoryGroup(accountName) {
-            const group = document.querySelector(`.history-group[data-account="${accountName}"]`);
+            const group = document.querySelector(`.history-card[data-account="${accountName}"]`);
             if (group) {
                 group.classList.toggle('collapsed');
             }
