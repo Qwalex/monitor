@@ -60,10 +60,10 @@ router.get('/chart', (req: Request, res: Response) => {
     try {
         const db = getDatabase();
         const { period = '24h' } = req.query;
-        
+
         let fromDate: string;
         const now = new Date();
-        
+
         switch (period) {
             case '24h':
                 fromDate = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -77,27 +77,67 @@ router.get('/chart', (req: Request, res: Response) => {
             default:
                 fromDate = '1970-01-01T00:00:00.000Z';
         }
-        
-        const result = db.exec(`
-            SELECT 
+
+        // Get all accounts
+        const accountsResult = db.exec('SELECT id, name FROM accounts ORDER BY id');
+        const accounts = accountsResult.length > 0 ? accountsResult[0].values.map((row: any[]) => ({
+            id: row[0],
+            name: row[1]
+        })) : [];
+
+        // Get balance history grouped by time slot and account
+        const historyResult = db.exec(`
+            SELECT
                 bh.recorded_at,
-                SUM(bh.balance) as total_balance
+                bh.account_id,
+                a.name as account_name,
+                bh.balance
             FROM balance_history bh
+            JOIN accounts a ON bh.account_id = a.id
             WHERE bh.recorded_at >= ?
-            GROUP BY date(bh.recorded_at), strftime('%H', bh.recorded_at)
             ORDER BY bh.recorded_at ASC
         `, [fromDate]);
-        
-        if (result.length === 0 || result[0].values.length === 0) {
-            return res.json([]);
+
+        if (historyResult.length === 0 || historyResult[0].values.length === 0) {
+            return res.json({ accounts: [], data: {} });
         }
-        
-        const chartData = result[0].values.map((row: any[]) => ({
-            timestamp: row[0],
-            totalBalance: row[1],
-        }));
-        
-        res.json(chartData);
+
+        // Group by time slots (hourly)
+        const timeSlots: Map<string, Map<number, number>> = new Map();
+
+        for (const row of historyResult[0].values) {
+            const timestamp = row[0] as string;
+            const accountId = row[1] as number;
+            const balance = row[3] as number;
+
+            // Round to hour
+            const date = new Date(timestamp);
+            date.setMinutes(0, 0, 0);
+            const slotKey = date.toISOString();
+
+            if (!timeSlots.has(slotKey)) {
+                timeSlots.set(slotKey, new Map());
+            }
+            timeSlots.get(slotKey)!.set(accountId, balance);
+        }
+
+        // Build response
+        const timestamps = Array.from(timeSlots.keys()).sort();
+        const data: Record<string, Record<string, number>> = {};
+
+        for (const ts of timestamps) {
+            data[ts] = {};
+            const slotData = timeSlots.get(ts)!;
+            for (const acc of accounts) {
+                data[ts][acc.name] = slotData.get(acc.id) || 0;
+            }
+        }
+
+        res.json({
+            accounts: accounts.map((a: any) => a.name),
+            timestamps: timestamps,
+            data: data
+        });
     } catch (error) {
         console.error('Error fetching chart data:', error);
         res.status(500).json({ error: 'Failed to fetch chart data' });
