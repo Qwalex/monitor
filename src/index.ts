@@ -29,7 +29,11 @@ app.use((req, _res, next) => {
 app.use(express.json());
 
 app.use(express.static(path.join(__dirname, '../src/ui')));
+app.use(`${BASE_PATH}/monitor`, express.static(path.join(__dirname, '../src/ui')));
 app.get(BASE_PATH || '/', (_req, res) => {
+    res.sendFile(path.join(__dirname, '../src/ui/index.html'));
+});
+app.get(`${BASE_PATH}/monitor`, (_req, res) => {
     res.sendFile(path.join(__dirname, '../src/ui/index.html'));
 });
 
