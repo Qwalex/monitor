@@ -2,9 +2,7 @@ version: '3.8'
 
 services:
   monitor:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/qwalex/monitor:latest
     container_name: monitor
     ports:
       - "8083:3000"
