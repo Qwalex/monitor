@@ -193,9 +193,9 @@ async function getBalancesMessage(): Promise<string> {
 async function getHistoryMessage(): Promise<string> {
     const db = getDatabase();
     const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    
+
     const result = db.exec(`
-        SELECT 
+        SELECT
             a.name,
             bh.coin,
             bh.balance,
@@ -203,28 +203,44 @@ async function getHistoryMessage(): Promise<string> {
         FROM balance_history bh
         JOIN accounts a ON bh.account_id = a.id
         WHERE bh.recorded_at >= ?
-        ORDER BY bh.recorded_at DESC
-        LIMIT 20
+        ORDER BY a.name, bh.recorded_at DESC
     `, [fromDate]);
-    
+
     if (result.length === 0 || result[0].values.length === 0) {
         return 'Нет данных за последние 24 часа.';
     }
-    
-    let text = '<b>📊 История за 24ч:</b>\n\n';
-    
+
+    // Group by account
+    const grouped: Record<string, { coin: string, balance: number, recorded_at: string }[]> = {};
+
     for (const row of result[0].values) {
         const name = row[0] as string;
         const coin = row[1] as string;
         const balance = row[2] as number;
-        const recorded = new Date(row[3] as string);
-        
-        const time = recorded.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-        const date = recorded.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' });
-        
-        text += `${date} ${time} | ${name}: ${coin} ${balance.toFixed(4)}\n`;
+        const recorded_at = row[3] as string;
+
+        if (!grouped[name]) {
+            grouped[name] = [];
+        }
+        // Limit to 10 records per account
+        if (grouped[name].length < 10) {
+            grouped[name].push({ coin, balance, recorded_at });
+        }
     }
-    
+
+    let text = '<b>📊 История за 24ч:</b>\n\n';
+
+    for (const [accountName, items] of Object.entries(grouped)) {
+        text += `<b>${accountName}</b>\n`;
+        for (const item of items) {
+            const recorded = new Date(item.recorded_at);
+            const time = recorded.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            const date = recorded.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' });
+            text += `  ${date} ${time} - ${item.coin} ${item.balance.toFixed(4)}\n`;
+        }
+        text += '\n';
+    }
+
     return text;
 }
 
