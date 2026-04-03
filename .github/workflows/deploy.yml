@@ -71,6 +71,10 @@ jobs:
           script: |
             cd /root/monitor
 
+            # Fetch and pull latest code
+            git fetch origin master
+            git pull origin master
+
             # Pull latest image (this is the quick step with minimal downtime)
             docker compose pull
 
