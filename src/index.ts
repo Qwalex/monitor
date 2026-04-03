@@ -44,6 +44,11 @@ app.get(`${BASE_PATH}/api/health`, (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Error handling middleware (4 args required for error handler)
+app.use((err: any, _req: any, res: any, _next: any) => {
+    console.error('[ERROR]', err);
+});
+
 async function main() {
     try {
         console.log('Initializing database...');

@@ -50,7 +50,7 @@ router.get('/', (_req: Request, res: Response) => {
     }
 });
 
-router.post('/', (req: Request, res: Response) => {
+router.post('/', (req: Request, res: Response, next) => {
     console.log('[Services] POST /api/services called', req.body);
     try {
         const { name, url, expected_status = 200, check_interval = 60 } = req.body;
@@ -84,13 +84,20 @@ router.post('/', (req: Request, res: Response) => {
             downtime_started_at: null,
         };
         console.log(`[Services] Starting monitoring for: ${name} (${url})`);
-        addServiceMonitoring(newService);
-        console.log(`[Services] Monitoring started for service id=${id}`);
+
+        // Delay monitoring start to ensure response is sent
+        setTimeout(() => {
+            console.log(`[Services] Starting delayed monitoring for: ${name}`);
+            addServiceMonitoring(newService);
+        }, 100);
+
+        console.log(`[Services] Monitoring scheduled for service id=${id}`);
 
         res.status(201).json({ id, name, url, expected_status, check_interval });
     } catch (error) {
         console.error('Error creating service:', error);
         res.status(500).json({ error: 'Failed to create service' });
+        next(error);
     }
 });
 
