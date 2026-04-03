@@ -19,6 +19,13 @@ const PORT = process.env.PORT || 3000;
 const BASE_PATH = process.env.BASE_PATH || '';
 
 app.use(cors());
+
+// Request logging middleware
+app.use((req, _res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+});
+
 app.use(express.json());
 
 app.use(express.static(path.join(__dirname, '../src/ui')));

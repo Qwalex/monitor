@@ -51,6 +51,7 @@ router.get('/', (_req: Request, res: Response) => {
 });
 
 router.post('/', (req: Request, res: Response) => {
+    console.log('[Services] POST /api/services called', req.body);
     try {
         const { name, url, expected_status = 200, check_interval = 60 } = req.body;
 
