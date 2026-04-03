@@ -992,7 +992,7 @@
                     return;
                 }
 
-                const labels = data.timestamps.map((ts: string) => {
+                const labels = data.timestamps.map((ts) => {
                     const date = new Date(ts);
                     return date.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                 });
@@ -1003,9 +1003,9 @@
                     '#79c0ff', '#56d364', '#ff7b72', '#e3b341', '#bc8cff'
                 ];
 
-                const datasets = data.accounts.map((accountName: string, index: number) => ({
+                const datasets = data.accounts.map((accountName, index) => ({
                     label: accountName,
-                    data: data.timestamps.map((ts: string) => data.data[ts]?.[accountName] || 0),
+                    data: data.timestamps.map((ts) => data.data[ts]?.[accountName] || 0),
                     borderColor: colors[index % colors.length],
                     backgroundColor: colors[index % colors.length] + '15',
                     fill: false,
