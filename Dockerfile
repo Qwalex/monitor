@@ -16,7 +16,6 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/src/ui ./src/ui
-COPY --from=builder /app/data ./data
 
 ENV NODE_ENV=production
 ENV PORT=3000
