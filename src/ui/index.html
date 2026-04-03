@@ -483,7 +483,7 @@
             padding: 12px 16px;
             background: rgba(88, 166, 255, 0.1);
             border: 1px solid var(--border-color);
-            border-radius: 8px 8px 0 0;
+            border-radius: 8px;
             cursor: pointer;
             transition: background 0.2s ease;
         }
@@ -513,19 +513,20 @@
             transition: transform 0.2s ease;
         }
 
-        .history-group.collapsed .history-group-toggle {
+        .history-group .history-group-toggle {
             transform: rotate(-90deg);
         }
 
-        .history-group.collapsed .history-group-content {
-            display: none;
+        .history-group:not(.collapsed) .history-group-toggle {
+            transform: rotate(0deg);
         }
 
         .history-group-content {
             border: 1px solid var(--border-color);
             border-top: none;
             border-radius: 0 0 8px 8px;
-            overflow: hidden;
+            max-height: 800px;
+            overflow-y: auto;
         }
 
         .history-group.collapsed .history-group-content {
@@ -716,7 +717,7 @@
         <div id="chart-tab" class="tab-content" style="display: none;">
             <div class="card">
                 <div class="card-header">
-                    <h2 class="card-title">Изменение баланса</h2>
+                    <h2 class="card-title">Общий баланс</h2>
                     <div class="period-selector">
                         <button class="period-btn active" onclick="setPeriod('24h')">24ч</button>
                         <button class="period-btn" onclick="setPeriod('7d')">7д</button>
@@ -728,6 +729,7 @@
                     <canvas id="balanceChart"></canvas>
                 </div>
             </div>
+            <div id="individual-charts"></div>
         </div>
 
         <div id="history-tab" class="tab-content" style="display: none;">
@@ -835,6 +837,7 @@
     <script>
         const basePath = '/monitor';
         let balanceChart = null;
+        let individualCharts = {};
         let currentPeriod = '24h';
 
         let isInitialLoad = true;
@@ -1044,7 +1047,7 @@
                     }).join('');
 
                     return `
-                        <div class="history-group" data-account="${accountName}">
+                        <div class="history-group collapsed" data-account="${accountName}">
                             <div class="history-group-header" onclick="toggleHistoryGroup('${accountName}')">
                                 <div class="history-group-toggle">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1182,6 +1185,106 @@
                         }
                     }
                 });
+
+                // Render individual charts for each account
+                const container = document.getElementById('individual-charts');
+                container.innerHTML = '';
+
+                if (data.accountData) {
+                    const individualColors = [
+                        '#58a6ff', '#3fb950', '#f85149', '#d29922', '#a371f7',
+                        '#79c0ff', '#56d364', '#ff7b72', '#e3b341', '#bc8cff'
+                    ];
+
+                    data.accounts.forEach((accountName, index) => {
+                        const accData = data.accountData[accountName];
+                        if (!accData || accData.balances.length === 0) return;
+
+                        // Create card for each account
+                        const card = document.createElement('div');
+                        card.className = 'card';
+                        card.innerHTML = `
+                            <div class="card-header">
+                                <h2 class="card-title">${accountName}</h2>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="chart-${accountName.replace(/[^a-zA-Z0-9]/g, '-')}"></canvas>
+                            </div>
+                        `;
+                        container.appendChild(card);
+
+                        const accCtx = card.querySelector('canvas').getContext('2d');
+                        const accLabels = accData.timestamps.map(ts => {
+                            const date = new Date(ts);
+                            return date.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                        });
+
+                        // Destroy previous chart if exists
+                        if (individualCharts[accountName]) {
+                            individualCharts[accountName].destroy();
+                        }
+
+                        individualCharts[accountName] = new Chart(accCtx, {
+                            type: 'line',
+                            data: {
+                                labels: accLabels,
+                                datasets: [{
+                                    label: accountName,
+                                    data: accData.balances,
+                                    borderColor: individualColors[index % individualColors.length],
+                                    backgroundColor: individualColors[index % individualColors.length] + '15',
+                                    fill: true,
+                                    tension: 0.4,
+                                    pointRadius: 2,
+                                    pointHoverRadius: 6,
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        display: false
+                                    },
+                                    tooltip: {
+                                        backgroundColor: '#161b22',
+                                        titleColor: '#c9d1d9',
+                                        bodyColor: '#c9d1d9',
+                                        borderColor: '#30363d',
+                                        borderWidth: 1,
+                                        padding: 12,
+                                        callbacks: {
+                                            label: function(context) {
+                                                return context.parsed.y.toFixed(4);
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        grid: {
+                                            color: '#30363d',
+                                            drawBorder: false
+                                        },
+                                        ticks: {
+                                            color: '#8b949e',
+                                            maxTicksLimit: 8
+                                        }
+                                    },
+                                    y: {
+                                        grid: {
+                                            color: '#30363d',
+                                            drawBorder: false
+                                        },
+                                        ticks: {
+                                            color: '#8b949e'
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    });
+                }
             } catch (error) {
                 console.error('Error loading chart:', error);
             }

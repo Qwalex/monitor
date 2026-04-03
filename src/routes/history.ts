@@ -133,10 +133,29 @@ router.get('/chart', (req: Request, res: Response) => {
             }
         }
 
+        // Build response with individual account data
+        const accountData: Record<string, { timestamps: string[], balances: number[] }> = {};
+
+        for (const acc of accounts) {
+            const accBalances: number[] = [];
+            const accTimestamps: string[] = [];
+
+            for (const ts of timestamps) {
+                accTimestamps.push(ts);
+                accBalances.push(data[ts]?.[acc.name] || 0);
+            }
+
+            accountData[acc.name] = {
+                timestamps: accTimestamps,
+                balances: accBalances
+            };
+        }
+
         res.json({
             accounts: accounts.map((a: any) => a.name),
             timestamps: timestamps,
-            data: data
+            data: data,
+            accountData: accountData
         });
     } catch (error) {
         console.error('Error fetching chart data:', error);
