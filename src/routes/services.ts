@@ -95,13 +95,10 @@ router.post('/', (req: Request, res: Response, next) => {
         };
         console.log(`[Services] Starting monitoring for: ${name} (${url})`);
 
-        // Delay monitoring start to ensure response is sent
-        setTimeout(() => {
-            console.log(`[Services] Starting delayed monitoring for: ${name}`);
-            addServiceMonitoring(newService);
-        }, 100);
+        // Start monitoring immediately (first check will happen synchronously)
+        addServiceMonitoring(newService);
 
-        console.log(`[Services] Monitoring scheduled for service id=${id}`);
+        console.log(`[Services] Monitoring started for service id=${id}`);
 
         res.status(201).json({ id, name, url, expected_status, check_interval });
     } catch (error) {
