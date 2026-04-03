@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDatabase, saveDatabase } from '../database.js';
-import { getAccountBalance, Balance } from '../bybit.js';
+import { getAccountBalance } from '../bybit.js';
 
 const router = Router();
 
@@ -39,22 +39,19 @@ router.get('/', async (_req: Request, res: Response) => {
         }));
         
         const accountBalances: AccountBalance[] = [];
-        
+
         for (const account of accounts) {
             const walletBalance = await getAccountBalance(account);
-            
-            if (walletBalance && walletBalance.coin) {
-                const balances = walletBalance.coin
-                    .filter((c: Balance) => c.coin === 'USDT')
-                    .map((c: Balance) => ({
-                        coin: c.coin,
-                        balance: parseFloat(c.walletBalance || '0'),
-                    })).filter(b => b.balance > 0);
-                
+
+            if (walletBalance && walletBalance.totalEquity) {
+                const totalEquity = parseFloat(walletBalance.totalEquity || '0');
                 accountBalances.push({
                     accountId: account.id,
                     accountName: account.name,
-                    balances,
+                    balances: [{
+                        coin: 'USDT',
+                        balance: totalEquity,
+                    }],
                 });
             }
         }
@@ -89,19 +86,20 @@ router.get('/:accountId', async (req: Request, res: Response) => {
         };
         
         const walletBalance = await getAccountBalance(account);
-        
-        if (!walletBalance || !walletBalance.coin) {
+
+        if (!walletBalance || !walletBalance.totalEquity) {
             return res.json({ accountId: account.id, accountName: account.name, balances: [] });
         }
-        
-        const balances = walletBalance.coin
-            .filter((c: Balance) => c.coin === 'USDT')
-            .map((c: Balance) => ({
-                coin: c.coin,
-                balance: parseFloat(c.walletBalance || '0'),
-            })).filter(b => b.balance > 0);
-        
-        res.json({ accountId: account.id, accountName: account.name, balances });
+
+        const totalEquity = parseFloat(walletBalance.totalEquity || '0');
+        res.json({
+            accountId: account.id,
+            accountName: account.name,
+            balances: [{
+                coin: 'USDT',
+                balance: totalEquity,
+            }]
+        });
     } catch (error) {
         console.error('Error fetching account balance:', error);
         res.status(500).json({ error: 'Failed to fetch account balance' });
@@ -131,34 +129,30 @@ router.post('/sync/:accountId', async (req: Request, res: Response) => {
         };
         
         const walletBalance = await getAccountBalance(account);
-        
-        if (!walletBalance || !walletBalance.coin) {
+
+        if (!walletBalance || !walletBalance.totalEquity) {
             return res.status(500).json({ error: 'Failed to fetch balance from Bybit' });
         }
-        
+
         const now = new Date().toISOString();
-        
-        for (const coin of walletBalance.coin) {
-            if (coin.coin !== 'USDT') continue;
-            const balance = parseFloat(coin.walletBalance || '0');
-            if (balance > 0) {
-                db.run(
-                    'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
-                    [account.id, coin.coin, balance, now]
-                );
-            }
+        const totalEquity = parseFloat(walletBalance.totalEquity || '0');
+
+        if (totalEquity > 0) {
+            db.run(
+                'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
+                [account.id, 'USDT', totalEquity, now]
+            );
         }
-        
+
         saveDatabase();
-        
-        const balances = walletBalance.coin
-            .filter((c: Balance) => c.coin === 'USDT')
-            .map((c: Balance) => ({
-                coin: c.coin,
-                balance: parseFloat(c.walletBalance || '0'),
-            })).filter(b => b.balance > 0);
-        
-        res.json({ success: true, balances });
+
+        res.json({
+            success: true,
+            balances: [{
+                coin: 'USDT',
+                balance: totalEquity,
+            }]
+        });
     } catch (error) {
         console.error('Error syncing balance:', error);
         res.status(500).json({ error: 'Failed to sync balance' });

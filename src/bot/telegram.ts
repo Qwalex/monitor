@@ -172,21 +172,13 @@ async function getBalancesMessage(): Promise<string> {
         };
         
         const walletBalance = await getAccountBalance(account);
-        
-        if (walletBalance && walletBalance.coin) {
-            const balances = walletBalance.coin
-                .filter(c => c.coin === 'USDT' && parseFloat(c.walletBalance || '0') > 0);
-            
-            if (balances.length > 0) {
+
+        if (walletBalance && walletBalance.totalEquity) {
+            const totalEquity = parseFloat(walletBalance.totalEquity || '0');
+            if (totalEquity > 0) {
                 hasBalances = true;
                 text += `<b>${account.name}</b>\n`;
-                
-                for (const coin of balances) {
-                    const balance = parseFloat(coin.walletBalance || '0');
-                    text += `  ${coin.coin}: ${balance.toFixed(4)}\n`;
-                }
-                
-                text += '\n';
+                text += `  USDT: ${totalEquity.toFixed(4)}\n\n`;
             }
         }
     }
@@ -256,17 +248,14 @@ async function syncAllBalances(): Promise<void> {
         };
         
         const walletBalance = await getAccountBalance(account);
-        
-        if (walletBalance && walletBalance.coin) {
-            for (const coin of walletBalance.coin) {
-                if (coin.coin !== 'USDT') continue;
-                const balance = parseFloat(coin.walletBalance || '0');
-                if (balance > 0) {
-                    db.run(
-                        'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
-                        [account.id, coin.coin, balance, now]
-                    );
-                }
+
+        if (walletBalance && walletBalance.totalEquity) {
+            const totalEquity = parseFloat(walletBalance.totalEquity || '0');
+            if (totalEquity > 0) {
+                db.run(
+                    'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
+                    [account.id, 'USDT', totalEquity, now]
+                );
             }
         }
     }

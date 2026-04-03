@@ -11,10 +11,12 @@ export interface BybitAccount {
 export interface Balance {
     coin: string;
     walletBalance: string;
+    equity: string;
 }
 
 export interface WalletBalance {
     accountType: string;
+    totalEquity: string;
     coin: Balance[];
 }
 

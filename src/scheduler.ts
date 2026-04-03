@@ -1,7 +1,6 @@
 import cron from 'node-cron';
 import { getDatabase, saveDatabase } from './database.js';
 import { getAccountBalance } from './bybit.js';
-import { sendBalanceReport } from './bot/telegram.js';
 
 export function startScheduler(): void {
     cron.schedule('0 * * * *', async () => {
@@ -36,19 +35,17 @@ async function syncAllBalances(): Promise<void> {
         
         try {
             const walletBalance = await getAccountBalance(account);
-            
-            if (walletBalance && walletBalance.coin) {
-                for (const coin of walletBalance.coin) {
-                    const balance = parseFloat(coin.walletBalance || '0');
-                    if (balance > 0) {
-                        db.run(
-                            'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
-                            [account.id, coin.coin, balance, now]
-                        );
-                    }
+
+            if (walletBalance && walletBalance.totalEquity) {
+                const totalEquity = parseFloat(walletBalance.totalEquity || '0');
+                if (totalEquity > 0) {
+                    db.run(
+                        'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
+                        [account.id, 'USDT', totalEquity, now]
+                    );
                 }
                 syncedCount++;
-                console.log(`Synced balance for account: ${account.name}`);
+                console.log(`Synced balance for account: ${account.name} - ${totalEquity} USDT`);
             }
         } catch (error) {
             console.error(`Error syncing account ${account.name}:`, error);
@@ -57,12 +54,6 @@ async function syncAllBalances(): Promise<void> {
     
     saveDatabase();
     console.log(`Synced ${syncedCount} accounts`);
-    
-    try {
-        await sendBalanceReport();
-    } catch (error) {
-        console.error('Error sending balance report:', error);
-    }
 }
 
 export async function runManualSync(): Promise<void> {

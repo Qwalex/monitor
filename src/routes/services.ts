@@ -61,18 +61,19 @@ router.post('/', (req: Request, res: Response, next) => {
 
         const db = getDatabase();
         db.run(
-            'INSERT INTO services (name, url, expected_status, check_interval) VALUES (?, ?, ?, ?)',
-            [name, url, expected_status, check_interval]
+            'INSERT INTO services (name, url, expected_status, check_interval, created_at) VALUES (?, ?, ?, ?, ?)',
+            [name, url, expected_status, check_interval, new Date().toISOString()]
         );
 
         saveDatabase();
 
-        const result = db.exec('SELECT last_insert_rowid()');
-        const id = result[0].values[0][0];
+        // Get the last inserted ID
+        const result = db.exec('SELECT last_insert_rowid() as id, * FROM services ORDER BY id DESC LIMIT 1');
+        const id = result[0].values[0][0] as number;
 
         // Start monitoring the new service
         const newService: Service = {
-            id: id as number,
+            id: id,
             name,
             url,
             expected_status,
