@@ -17,6 +17,9 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+/** Without this, `app.get("/monitor")` also matches `/monitor/` and runs redirect before the index handler — infinite redirect behind nginx. */
+app.set('strict routing', true);
+
 /** Public URL prefix (no trailing slash), e.g. "" or "/monitor". Must match reverse proxy path. */
 const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, '');
 
