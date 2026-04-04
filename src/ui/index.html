@@ -9,11 +9,11 @@
     <meta name="apple-mobile-web-app-title" content="Balance Monitor">
     <meta name="description" content="Monitor Bybit account balances with web interface and Telegram bot">
     <title>Bybit Balance Monitor</title>
-    <link rel="manifest" href="/monitor/manifest.json">
+    <link rel="manifest" href="manifest.json">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="apple-touch-icon" href="/monitor/icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         :root {
@@ -594,6 +594,47 @@
             margin-top: 24px;
         }
 
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            width: 100%;
+        }
+
+        .history-list > .loading {
+            width: 100%;
+        }
+
+        .history-list .empty-state {
+            width: 100%;
+        }
+
+        @media (max-width: 640px) {
+            .history-card-header {
+                flex-wrap: wrap;
+            }
+
+            .history-card-item {
+                grid-template-columns: 1fr;
+                gap: 6px;
+            }
+
+            .history-card-item .balance {
+                justify-self: start;
+                text-align: left;
+            }
+
+            .history-card-item .coin {
+                text-align: left;
+            }
+
+            .history-card-header .record-count {
+                margin-left: 0;
+                flex-basis: 100%;
+                padding-left: 36px;
+            }
+        }
+
         .history-card {
             background: var(--bg-primary);
             border: 1px solid var(--border-color);
@@ -609,6 +650,7 @@
             background: rgba(88, 166, 255, 0.1);
             cursor: pointer;
             transition: background 0.2s ease;
+            flex-wrap: nowrap;
         }
 
         .history-card-header:hover {
@@ -619,11 +661,18 @@
             font-weight: 600;
             color: var(--primary);
             font-family: 'JetBrains Mono', monospace;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .history-card-header .record-count {
             font-size: 12px;
             color: var(--text-muted);
+            flex-shrink: 0;
+            margin-left: auto;
         }
 
         .history-card-toggle {
@@ -653,8 +702,9 @@
         }
 
         .history-card-item {
-            display: flex;
-            justify-content: space-between;
+            display: grid;
+            grid-template-columns: minmax(120px, 1.2fr) minmax(56px, 100px) minmax(88px, max-content);
+            gap: 16px 24px;
             align-items: center;
             padding: 10px 16px;
             border-bottom: 1px solid var(--border-color);
@@ -672,11 +722,15 @@
         .history-card-item .coin {
             color: var(--primary);
             font-weight: 500;
+            text-align: center;
         }
 
         .history-card-item .balance {
             font-family: 'JetBrains Mono', monospace;
             color: var(--success);
+            justify-self: end;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
         }
 
         .loading {
@@ -1019,7 +1073,7 @@
                 <div class="card-header">
                     <h2 class="card-title">История изменений</h2>
                 </div>
-                <div id="history-container" class="cards-grid">
+                <div id="history-container" class="history-list">
                     <div class="loading">
                         <div class="spinner"></div>
                     </div>
@@ -1101,7 +1155,7 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        const basePath = '/monitor';
+        const basePath = '__BASE_PATH__';
         let balanceChart = null;
         let individualCharts = {};
         let currentPeriod = '24h';
@@ -1259,7 +1313,7 @@
 
                 if (data.length === 0) {
                     container.innerHTML = `
-                        <div class="empty-state" style="grid-column: 1 / -1;">
+                        <div class="empty-state">
                             <div class="empty-state-icon">📜</div>
                             <p class="empty-state-text">Нет данных истории</p>
                         </div>
@@ -1734,7 +1788,7 @@
         // Register Service Worker for PWA
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/monitor/service-worker.js')
+                navigator.serviceWorker.register((basePath || '') + '/service-worker.js')
                     .then((registration) => {
                         console.log('SW registered:', registration.scope);
                     })

@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import express from 'express';
 import cors from 'cors';
@@ -16,7 +17,26 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const BASE_PATH = process.env.BASE_PATH || '';
+/** Public URL prefix (no trailing slash), e.g. "" or "/monitor". Must match reverse proxy path. */
+const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/$/, '');
+
+const UI_DIR = path.join(__dirname, '../src/ui');
+const INDEX_HTML_PATH = path.join(UI_DIR, 'index.html');
+
+let indexHtmlTemplate: string | null = null;
+
+function getIndexHtml(): string {
+    if (indexHtmlTemplate === null) {
+        indexHtmlTemplate = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
+    }
+    return indexHtmlTemplate.replace(/__BASE_PATH__/g, BASE_PATH);
+}
+
+function sendIndexHtml(res: express.Response): void {
+    res.type('html').send(getIndexHtml());
+}
+
+const API_ROOT = BASE_PATH ? `${BASE_PATH}/api` : '/api';
 
 app.use(cors());
 
@@ -28,23 +48,25 @@ app.use((req, _res, next) => {
 
 app.use(express.json());
 
-app.use(express.static(path.join(__dirname, '../src/ui')));
-app.use(`${BASE_PATH}/monitor`, express.static(path.join(__dirname, '../src/ui')));
-app.get(BASE_PATH || '/', (_req, res) => {
-    res.sendFile(path.join(__dirname, '../src/ui/index.html'));
-});
-app.get(`${BASE_PATH}/monitor`, (_req, res) => {
-    res.sendFile(path.join(__dirname, '../src/ui/index.html'));
-});
+if (BASE_PATH) {
+    app.get(BASE_PATH, (_req, res) => res.redirect(302, `${BASE_PATH}/`));
+    app.get(`${BASE_PATH}/`, (_req, res) => sendIndexHtml(res));
+    app.get(`${BASE_PATH}/index.html`, (_req, res) => sendIndexHtml(res));
+} else {
+    app.get('/', (_req, res) => sendIndexHtml(res));
+    app.get('/index.html', (_req, res) => sendIndexHtml(res));
+}
 
-app.use(`${BASE_PATH}/api/accounts`, accountsRouter);
-app.use(`${BASE_PATH}/api/balances`, balancesRouter);
-app.use(`${BASE_PATH}/api/history`, historyRouter);
-app.use(`${BASE_PATH}/api/services`, servicesRouter);
+app.use(BASE_PATH || '/', express.static(UI_DIR, { index: false }));
 
-setWebhook(app);
+app.use(`${API_ROOT}/accounts`, accountsRouter);
+app.use(`${API_ROOT}/balances`, balancesRouter);
+app.use(`${API_ROOT}/history`, historyRouter);
+app.use(`${API_ROOT}/services`, servicesRouter);
 
-app.get(`${BASE_PATH}/api/health`, (_req, res) => {
+setWebhook(app, BASE_PATH);
+
+app.get(`${API_ROOT}/health`, (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
@@ -75,7 +97,8 @@ async function main() {
         });
 
         app.listen(PORT, () => {
-            console.log(`\n🚀 Server running at http://localhost:${PORT}${BASE_PATH}\n`);
+            const ui = BASE_PATH ? `${BASE_PATH}/` : '/';
+            console.log(`\n🚀 Server running at http://localhost:${PORT}${ui}\n`);
         });
     } catch (error) {
         console.error('Failed to start server:', error);

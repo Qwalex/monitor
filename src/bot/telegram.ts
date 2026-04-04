@@ -1,9 +1,20 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { getDatabase, saveDatabase } from '../database.js';
-import { getAccountBalance, validateApiKey } from '../bybit.js';
+import { getAccountBalance } from '../bybit.js';
 
 let bot: TelegramBot | null = null;
 let authorizedChatId: string | null = null;
+
+function mainKeyboardOpts(): {
+    reply_markup: { keyboard: { text: string }[][]; resize_keyboard: boolean };
+} {
+    return {
+        reply_markup: {
+            keyboard: [[{ text: '💰 Баланс' }]],
+            resize_keyboard: true,
+        },
+    };
+}
 
 export function initTelegramBot(): void {
     const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -47,7 +58,18 @@ function setupCommands(): void {
 /sync - Синхронизировать балансы
         `;
         
-        bot?.sendMessage(chatId, helpText, { parse_mode: 'HTML' });
+        bot?.sendMessage(chatId, helpText, { parse_mode: 'HTML', ...mainKeyboardOpts() });
+    });
+
+    bot.on('message', async (msg) => {
+        if (!bot || !msg.text || msg.text.startsWith('/')) return;
+        const chatId = msg.chat.id;
+        if (!isAuthorized(chatId.toString())) return;
+
+        if (msg.text.trim() === '💰 Баланс') {
+            const balancesText = await getBalancesMessage();
+            bot.sendMessage(chatId, balancesText, { parse_mode: 'HTML', ...mainKeyboardOpts() });
+        }
     });
     
     bot.onText(/\/accounts/, async (msg) => {
@@ -58,7 +80,7 @@ function setupCommands(): void {
         }
         
         const accountsText = await getAccountsMessage();
-        bot?.sendMessage(chatId, accountsText, { parse_mode: 'HTML' });
+        bot?.sendMessage(chatId, accountsText, { parse_mode: 'HTML', ...mainKeyboardOpts() });
     });
     
     bot.onText(/\/balance/, async (msg) => {
@@ -69,7 +91,7 @@ function setupCommands(): void {
         }
         
         const balancesText = await getBalancesMessage();
-        bot?.sendMessage(chatId, balancesText, { parse_mode: 'HTML' });
+        bot?.sendMessage(chatId, balancesText, { parse_mode: 'HTML', ...mainKeyboardOpts() });
     });
     
     bot.onText(/\/history/, async (msg) => {
@@ -80,7 +102,7 @@ function setupCommands(): void {
         }
         
         const historyText = await getHistoryMessage();
-        bot?.sendMessage(chatId, historyText, { parse_mode: 'HTML' });
+        bot?.sendMessage(chatId, historyText, { parse_mode: 'HTML', ...mainKeyboardOpts() });
     });
     
     bot.onText(/\/sync/, async (msg) => {
@@ -90,12 +112,12 @@ function setupCommands(): void {
             return bot?.sendMessage(chatId, 'Вы не авторизованы.');
         }
         
-        bot?.sendMessage(chatId, '🔄 Синхронизация балансов...');
+        bot?.sendMessage(chatId, '🔄 Синхронизация балансов...', mainKeyboardOpts());
         
         await syncAllBalances();
         
         const balancesText = await getBalancesMessage();
-        bot?.sendMessage(chatId, balancesText, { parse_mode: 'HTML' });
+        bot?.sendMessage(chatId, balancesText, { parse_mode: 'HTML', ...mainKeyboardOpts() });
     });
     
     bot.onText(/\/addaccount/, async (msg) => {
@@ -291,12 +313,15 @@ export async function sendBalanceReport(): Promise<void> {
     }
 }
 
-export function setWebhook(app: any): void {
+export function setWebhook(app: any, basePath = ''): void {
     const token = process.env.TELEGRAM_BOT_TOKEN;
 
     if (!token) return;
 
-    app.post('/api/telegram/webhook', async (req: any, res: any) => {
+    const prefix = (basePath || '').replace(/\/$/, '');
+    const webhookPath = prefix ? `${prefix}/api/telegram/webhook` : '/api/telegram/webhook';
+
+    app.post(webhookPath, async (req: any, res: any) => {
         if (!bot) {
             return res.status(500).json({ error: 'Bot not initialized' });
         }
