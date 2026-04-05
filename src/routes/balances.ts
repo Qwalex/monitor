@@ -19,6 +19,8 @@ interface AccountBalance {
         coin: string;
         balance: number;
     }[];
+    /** Bybit не отдал баланс (неверный ключ, сеть, тип аккаунта и т.д.) */
+    balanceUnavailable?: boolean;
 }
 
 router.get('/', async (_req: Request, res: Response) => {
@@ -52,6 +54,13 @@ router.get('/', async (_req: Request, res: Response) => {
                         coin: 'USDT',
                         balance: totalEquity,
                     }],
+                });
+            } else {
+                accountBalances.push({
+                    accountId: account.id,
+                    accountName: account.name,
+                    balances: [],
+                    balanceUnavailable: !walletBalance,
                 });
             }
         }

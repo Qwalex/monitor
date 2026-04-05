@@ -1280,7 +1280,9 @@
                                 <span class="amount">${b.balance.toFixed(4)}</span>
                             </div>
                         `).join('')
-                        : '<div class="balance-card-empty">Нет баланса</div>';
+                        : account.balanceUnavailable
+                            ? '<div class="balance-card-empty">Нет ответа от Bybit — проверьте ключ, тип аккаунта (UNIFIED/…) и IP whitelist</div>'
+                            : '<div class="balance-card-empty">Нет баланса</div>';
 
                     html += `
                         <div class="balance-card">

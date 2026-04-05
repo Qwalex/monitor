@@ -20,6 +20,19 @@ export interface WalletBalance {
     coin: Balance[];
 }
 
+function safeBybitErrorSummary(error: unknown): string {
+    const e = error as {
+        code?: number;
+        message?: string;
+        retCode?: number;
+        retMsg?: string;
+        response?: { data?: { retCode?: number; retMsg?: string } };
+    };
+    const code = e.code ?? e.retCode ?? e.response?.data?.retCode;
+    const msg = e.message ?? e.retMsg ?? e.response?.data?.retMsg ?? String(error);
+    return `code=${code ?? 'n/a'} message=${msg}`;
+}
+
 export async function getAccountBalance(account: BybitAccount): Promise<WalletBalance | null> {
     try {
         const client = new RestClientV5({
@@ -37,7 +50,9 @@ export async function getAccountBalance(account: BybitAccount): Promise<WalletBa
 
         return null;
     } catch (error) {
-        console.error(`Error fetching balance for account ${account.name}:`, error);
+        console.error(
+            `Error fetching balance for account ${account.name}: ${safeBybitErrorSummary(error)}`
+        );
         return null;
     }
 }
