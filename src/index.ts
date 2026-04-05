@@ -10,7 +10,8 @@ import balancesRouter from './routes/balances.js';
 import historyRouter from './routes/history.js';
 import servicesRouter from './routes/services.js';
 import { initTelegramBot, setWebhook, sendServiceDownAlert, sendServiceUpAlert } from './bot/telegram.js';
-import { isVkConfigured } from './bot/vk.js';
+import { isVkConfigured, isVkLongPollConfigured } from './bot/vk.js';
+import { startVkLongPoll } from './bot/vk-incoming.js';
 import { startScheduler } from './scheduler.js';
 import { startServiceMonitoring, stopAllServiceMonitoring } from './services.js';
 
@@ -89,6 +90,12 @@ async function main() {
         initTelegramBot();
         if (isVkConfigured()) {
             console.log('VK messenger fallback is configured (used if Telegram send fails or is unavailable)');
+        }
+        startVkLongPoll();
+        if (process.env.VK_ACCESS_TOKEN && !isVkLongPollConfigured()) {
+            console.log(
+                'VK_GROUP_ID не задан — входящие сообщения и кнопка «Баланс» в VK отключены (нужен id сообщества для Long Poll)'
+            );
         }
 
         console.log('Starting scheduler...');

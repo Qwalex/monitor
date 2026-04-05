@@ -12,6 +12,100 @@ export function htmlToPlain(html: string): string {
 }
 
 const VK_API = 'https://api.vk.com/method';
+const VK_API_VERSION = '5.199';
+
+/** Same row as Telegram: persistent «Баланс» button. */
+export function vkBalanceKeyboardJson(): string {
+    return JSON.stringify({
+        one_time: false,
+        buttons: [
+            [
+                {
+                    action: { type: 'text', label: '💰 Баланс', payload: '{}' },
+                    color: 'primary',
+                },
+            ],
+        ],
+    });
+}
+
+export async function vkRawMethod<T>(method: string, params: Record<string, string>): Promise<T | null> {
+    const token = process.env.VK_ACCESS_TOKEN;
+    if (!token) return null;
+
+    const body = new URLSearchParams({
+        access_token: token,
+        v: VK_API_VERSION,
+        ...params,
+    });
+
+    try {
+        const res = await fetch(`${VK_API}/${method}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body,
+        });
+        const data = (await res.json()) as { response?: T; error?: { error_msg: string; error_code: number } };
+        if (data.error) {
+            console.error('VK API error:', method, data.error.error_code, data.error.error_msg);
+            return null;
+        }
+        return data.response ?? null;
+    } catch (error) {
+        console.error('VK API request failed:', method, error);
+        return null;
+    }
+}
+
+function chunkVkMessage(text: string, maxLen = 4096): string[] {
+    if (text.length <= maxLen) return [text];
+    const parts: string[] = [];
+    for (let i = 0; i < text.length; i += maxLen) {
+        parts.push(text.slice(i, i + maxLen));
+    }
+    return parts;
+}
+
+/**
+ * Send from community bot to peer_id (user id in DM, or chat peer).
+ * Optional keyboard: JSON string from vkBalanceKeyboardJson().
+ */
+export async function sendVkToPeer(peerId: string | number, text: string, keyboard?: string): Promise<boolean> {
+    const token = process.env.VK_ACCESS_TOKEN;
+    if (!token) return false;
+
+    const chunks = chunkVkMessage(text);
+    let ok = true;
+    for (let i = 0; i < chunks.length; i++) {
+        const body = new URLSearchParams({
+            access_token: token,
+            v: VK_API_VERSION,
+            peer_id: String(peerId),
+            message: chunks[i],
+            random_id: String(Math.floor(Math.random() * 2 ** 31)),
+        });
+        if (keyboard !== undefined && i === chunks.length - 1) {
+            body.set('keyboard', keyboard);
+        }
+
+        try {
+            const res = await fetch(`${VK_API}/messages.send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body,
+            });
+            const data = (await res.json()) as { response?: number; error?: { error_msg: string; error_code: number } };
+            if (data.error) {
+                console.error('VK API error:', data.error.error_code, data.error.error_msg);
+                ok = false;
+            }
+        } catch (error) {
+            console.error('VK send failed:', error);
+            ok = false;
+        }
+    }
+    return ok;
+}
 
 /**
  * Send a message from a VK community (group) bot.
@@ -19,38 +113,17 @@ const VK_API = 'https://api.vk.com/method';
  * Env: VK_ACCESS_TOKEN, VK_PEER_ID (user id or peer_id, e.g. 123456789).
  */
 export async function trySendVkPlain(text: string): Promise<boolean> {
-    const token = process.env.VK_ACCESS_TOKEN;
     const peerId = process.env.VK_PEER_ID;
-    if (!token || !peerId) {
+    if (!peerId) {
         return false;
     }
-
-    const body = new URLSearchParams({
-        access_token: token,
-        v: '5.199',
-        peer_id: peerId,
-        message: text.slice(0, 4096),
-        random_id: String(Math.floor(Math.random() * 2 ** 31)),
-    });
-
-    try {
-        const res = await fetch(`${VK_API}/messages.send`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body,
-        });
-        const data = (await res.json()) as { response?: number; error?: { error_msg: string; error_code: number } };
-        if (data.error) {
-            console.error('VK API error:', data.error.error_code, data.error.error_msg);
-            return false;
-        }
-        return true;
-    } catch (error) {
-        console.error('VK send failed:', error);
-        return false;
-    }
+    return sendVkToPeer(peerId, text);
 }
 
 export function isVkConfigured(): boolean {
     return Boolean(process.env.VK_ACCESS_TOKEN && process.env.VK_PEER_ID);
+}
+
+export function isVkLongPollConfigured(): boolean {
+    return Boolean(process.env.VK_ACCESS_TOKEN && process.env.VK_GROUP_ID);
 }

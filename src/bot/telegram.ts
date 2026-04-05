@@ -197,7 +197,7 @@ async function getAccountsMessage(): Promise<string> {
     return text;
 }
 
-async function getBalancesMessage(): Promise<string> {
+export async function getBalancesMessage(): Promise<string> {
     const db = getDatabase();
     const result = db.exec('SELECT id, name, api_key, api_secret, account_type FROM accounts WHERE is_active = 1');
     
