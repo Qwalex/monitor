@@ -1,8 +1,8 @@
+import './load-env.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 
 import { initDatabase, closeDatabase } from './database.js';
 import accountsRouter from './routes/accounts.js';
@@ -10,12 +10,10 @@ import balancesRouter from './routes/balances.js';
 import historyRouter from './routes/history.js';
 import servicesRouter from './routes/services.js';
 import { initTelegramBot, setWebhook, sendServiceDownAlert, sendServiceUpAlert } from './bot/telegram.js';
-import { isVkConfigured, isVkLongPollConfigured } from './bot/vk.js';
+import { logVkStartupSummary } from './bot/vk.js';
 import { startVkLongPoll } from './bot/vk-incoming.js';
 import { startScheduler } from './scheduler.js';
 import { startServiceMonitoring, stopAllServiceMonitoring } from './services.js';
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -88,15 +86,8 @@ async function main() {
 
         console.log('Initializing Telegram bot...');
         initTelegramBot();
-        if (isVkConfigured()) {
-            console.log('VK messenger fallback is configured (used if Telegram send fails or is unavailable)');
-        }
+        logVkStartupSummary();
         startVkLongPoll();
-        if (process.env.VK_ACCESS_TOKEN && !isVkLongPollConfigured()) {
-            console.log(
-                'VK_GROUP_ID не задан — входящие сообщения и кнопка «Баланс» в VK отключены (нужен id сообщества для Long Poll)'
-            );
-        }
 
         console.log('Starting scheduler...');
         startScheduler();

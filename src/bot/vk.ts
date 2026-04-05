@@ -127,3 +127,29 @@ export function isVkConfigured(): boolean {
 export function isVkLongPollConfigured(): boolean {
     return Boolean(process.env.VK_ACCESS_TOKEN && process.env.VK_GROUP_ID);
 }
+
+/** Всегда пишет в лог, что с VK настроено (без секретов). */
+export function logVkStartupSummary(): void {
+    const token = Boolean(process.env.VK_ACCESS_TOKEN?.trim());
+    const peer = Boolean(process.env.VK_PEER_ID?.trim());
+    const group = Boolean(process.env.VK_GROUP_ID?.trim());
+
+    if (!token) {
+        console.log(
+            'VK: не активен — нет VK_ACCESS_TOKEN (файл .env должен быть в корне проекта или задайте переменные в Docker / systemd)'
+        );
+        return;
+    }
+    const parts: string[] = [];
+    parts.push(
+        peer
+            ? 'алерты в VK при сбое Telegram (VK_PEER_ID задан)'
+            : 'алерты в VK при сбое Telegram не уйдут без VK_PEER_ID'
+    );
+    parts.push(
+        group
+            ? 'Long Poll: кнопка «Баланс» и команды'
+            : 'Long Poll выключен — укажите VK_GROUP_ID (id сообщества)'
+    );
+    console.log('VK:', parts.join('; '));
+}
