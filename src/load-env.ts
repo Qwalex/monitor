@@ -1,14 +1,15 @@
 /**
  * Загрузка .env до чтения process.env в остальных модулях.
  *
- * Важно: Docker Compose часто делает `VK_ACCESS_TOKEN=${VK_ACCESS_TOKEN}` и подставляет
- * пустую строку — тогда без override: true dotenv не перезапишет значение из файла.
+ * В Docker переменные обычно приходят из compose `environment:` / `env_file:` — файла
+ * /app/.env в контейнере может не быть; это нормально.
  *
- * Порядок (последний найденный файл перекрывает предыдущие):
- * - MONITOR_DOTENV — явный путь к .env
- * - родитель каталога входного скрипта (корень проекта рядом с dist/ или src/)
+ * Порядок файлов (последний перекрывает предыдущие, override: true):
+ * - MONITOR_DOTENV
+ * - родитель каталога входного скрипта (…/dist/../.env ≈ корень приложения)
+ * - каталог входного скрипта (…/dist/.env)
  * - process.cwd()/.env
- * - родитель cwd (если запуск из dist/)
+ * - не добавляем cwd/../.env если это «/.env» у корня ФС
  */
 import path from 'path';
 import fs from 'fs';
@@ -25,10 +26,16 @@ function loadOneEnvFile(absPath: string): boolean {
     }
 }
 
+function isFilesystemRootDotenv(absPath: string): boolean {
+    const resolved = path.resolve(absPath);
+    const root = path.parse(resolved).root;
+    return path.dirname(resolved) === root && path.basename(resolved) === '.env';
+}
+
 const mainScript = process.argv[1];
-const fromEntryParent = mainScript
-    ? path.join(path.dirname(path.resolve(mainScript)), '..', '.env')
-    : null;
+const entryDir = mainScript ? path.dirname(path.resolve(mainScript)) : null;
+const fromEntryParent = entryDir ? path.join(entryDir, '..', '.env') : null;
+const besideEntry = entryDir ? path.join(entryDir, '.env') : null;
 
 const candidates: string[] = [];
 if (process.env.MONITOR_DOTENV?.trim()) {
@@ -37,8 +44,15 @@ if (process.env.MONITOR_DOTENV?.trim()) {
 if (fromEntryParent) {
     candidates.push(fromEntryParent);
 }
+if (besideEntry) {
+    candidates.push(besideEntry);
+}
 candidates.push(path.join(process.cwd(), '.env'));
-candidates.push(path.join(process.cwd(), '..', '.env'));
+
+const parentCwdEnv = path.resolve(process.cwd(), '..', '.env');
+if (!isFilesystemRootDotenv(parentCwdEnv)) {
+    candidates.push(parentCwdEnv);
+}
 
 const tried = [...new Set(candidates)];
 const loaded: string[] = [];
@@ -54,12 +68,20 @@ if (loaded.length === 0) {
 
 const vkTok = process.env.VK_ACCESS_TOKEN?.trim();
 if (!vkTok) {
-    const hint =
-        loaded.length > 0
-            ? ' Файл .env найден, но VK_ACCESS_TOKEN пустой или отсутствует — проверьте строку в файле (без пробелов в имени ключа).'
-            : ' Ни один .env не найден по путям: ' + tried.join(' | ');
-    console.log('[monitor] VK_ACCESS_TOKEN не задан после загрузки env.' + hint);
+    if (loaded.length > 0) {
+        console.log(
+            '[monitor] VK_ACCESS_TOKEN не задан: в загруженных .env нет непустого ключа (проверьте имя и значение).'
+        );
+    } else {
+        console.log(
+            '[monitor] VK_ACCESS_TOKEN не задан: в контейнере нет файла .env (это нормально). ' +
+                'Передайте переменные через docker-compose environment (как TELEGRAM_*) или env_file: .env на хосте.'
+        );
+        console.log(
+            `[monitor] cwd=${process.cwd()} argv[1]=${mainScript ?? ''} проверенные пути: ${tried.join(' | ')}`
+        );
+    }
     console.log(
-        '[monitor] Можно задать абсолютный путь: MONITOR_DOTENV=/path/to/.env (в systemd Environment= до ExecStart=).'
+        '[monitor] Либо абсолютный путь к файлу на хосте при bind-mount: MONITOR_DOTENV=/app/config/.env'
     );
 }
