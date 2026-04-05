@@ -10,6 +10,7 @@ import balancesRouter from './routes/balances.js';
 import historyRouter from './routes/history.js';
 import servicesRouter from './routes/services.js';
 import { initTelegramBot, setWebhook, sendServiceDownAlert, sendServiceUpAlert } from './bot/telegram.js';
+import { isVkConfigured } from './bot/vk.js';
 import { startScheduler } from './scheduler.js';
 import { startServiceMonitoring, stopAllServiceMonitoring } from './services.js';
 
@@ -86,6 +87,9 @@ async function main() {
 
         console.log('Initializing Telegram bot...');
         initTelegramBot();
+        if (isVkConfigured()) {
+            console.log('VK messenger fallback is configured (used if Telegram send fails or is unavailable)');
+        }
 
         console.log('Starting scheduler...');
         startScheduler();

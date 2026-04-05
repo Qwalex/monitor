@@ -1,6 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { getDatabase, saveDatabase } from '../database.js';
 import { getAccountBalance } from '../bybit.js';
+import { htmlToPlain, trySendVkPlain, isVkConfigured } from './vk.js';
 
 let bot: TelegramBot | null = null;
 let authorizedChatId: string | null = null;
@@ -150,6 +151,29 @@ function setupCommands(): void {
 function isAuthorized(chatId: string): boolean {
     if (!authorizedChatId) return true;
     return chatId === authorizedChatId;
+}
+
+/** Telegram first; on failure or if Telegram is not configured, VK (if configured). */
+async function sendHtmlWithFallback(html: string): Promise<void> {
+    if (bot && authorizedChatId) {
+        try {
+            await bot.sendMessage(authorizedChatId, html, { parse_mode: 'HTML' });
+            return;
+        } catch (error) {
+            console.error('Telegram send failed, trying VK fallback:', error);
+        }
+    } else if (process.env.TELEGRAM_BOT_TOKEN && (!bot || !authorizedChatId)) {
+        console.warn('Telegram bot misconfigured or unavailable (no chat id or bot init failed); trying VK if configured');
+    }
+
+    const plain = htmlToPlain(html);
+    if (await trySendVkPlain(plain)) {
+        return;
+    }
+
+    if (!isVkConfigured()) {
+        console.warn('No messenger delivered message (Telegram unavailable and VK not configured)');
+    }
 }
 
 async function getAccountsMessage(): Promise<string> {
@@ -302,15 +326,8 @@ async function syncAllBalances(): Promise<void> {
 }
 
 export async function sendBalanceReport(): Promise<void> {
-    if (!bot || !authorizedChatId) return;
-    
     const balancesText = await getBalancesMessage();
-    
-    try {
-        await bot.sendMessage(authorizedChatId, balancesText, { parse_mode: 'HTML' });
-    } catch (error) {
-        console.error('Error sending balance report:', error);
-    }
+    await sendHtmlWithFallback(balancesText);
 }
 
 export function setWebhook(app: any, basePath = ''): void {
@@ -337,24 +354,16 @@ export function setWebhook(app: any, basePath = ''): void {
 }
 
 export function sendServiceDownAlert(service: any): void {
-    if (!bot || !authorizedChatId) return;
-
     const message = `🔴 <b>Сервис недоступен!</b>
 
 Название: ${service.name}
 URL: ${service.url}
 Время: ${new Date().toLocaleString('ru-RU')}`;
 
-    try {
-        bot.sendMessage(authorizedChatId, message, { parse_mode: 'HTML' });
-    } catch (error) {
-        console.error('Error sending service down alert:', error);
-    }
+    void sendHtmlWithFallback(message);
 }
 
 export function sendServiceUpAlert(service: any, downtimeSeconds?: number): void {
-    if (!bot || !authorizedChatId) return;
-
     const downtimeStr = downtimeSeconds
         ? downtimeSeconds >= 3600
             ? `${Math.floor(downtimeSeconds / 3600)}ч ${Math.floor((downtimeSeconds % 3600) / 60)}м`
@@ -370,9 +379,5 @@ URL: ${service.url}
 Был недоступен: ${downtimeStr}
 Время: ${new Date().toLocaleString('ru-RU')}`;
 
-    try {
-        bot.sendMessage(authorizedChatId, message, { parse_mode: 'HTML' });
-    } catch (error) {
-        console.error('Error sending service up alert:', error);
-    }
+    void sendHtmlWithFallback(message);
 }
