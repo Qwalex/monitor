@@ -50,6 +50,16 @@ interface LongPollServer {
     ts: string;
 }
 
+/** VK иногда отдаёт server уже с https:// — нельзя делать https://https://... */
+function longPollCheckUrl(server: string, key: string, ts: string): string {
+    const trimmed = server.trim();
+    const base = /^https?:\/\//i.test(trimmed)
+        ? trimmed.replace(/\/$/, '')
+        : `https://${trimmed.replace(/^\/+/, '')}`;
+    const joiner = base.includes('?') ? '&' : '?';
+    return `${base}${joiner}act=a_check&key=${encodeURIComponent(key)}&ts=${encodeURIComponent(ts)}&wait=25`;
+}
+
 interface VkMessage {
     id: number;
     date: number;
@@ -111,7 +121,7 @@ async function longPollSession(): Promise<void> {
     let { key, server, ts } = serverInfo;
 
     for (;;) {
-        const url = `https://${server}?act=a_check&key=${encodeURIComponent(key)}&ts=${encodeURIComponent(ts)}&wait=25`;
+        const url = longPollCheckUrl(server, key, ts);
         const res = await fetch(url);
         const data = (await res.json()) as {
             ts?: string;
