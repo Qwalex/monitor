@@ -5,6 +5,8 @@ import * as path from 'path';
 let db: Database | null = null;
 let dbPath: string;
 
+type SqlValue = string | number | Uint8Array | null;
+
 export async function initDatabase(): Promise<Database> {
     const SQL = await initSqlJs();
     
@@ -26,6 +28,18 @@ export async function initDatabase(): Promise<Database> {
     saveDatabase();
     
     return db;
+}
+
+function migrateServicesNotifyColumn(): void {
+    if (!db) return;
+    const info = db.exec('PRAGMA table_info(services)');
+    if (!info.length || !info[0].values.length) return;
+    const columnNames = new Set(
+        info[0].values.map((row: SqlValue[]) => String(row[1]))
+    );
+    if (!columnNames.has('notify_alerts')) {
+        db.run('ALTER TABLE services ADD COLUMN notify_alerts INTEGER NOT NULL DEFAULT 1');
+    }
 }
 
 function createTables(): void {
@@ -75,9 +89,12 @@ function createTables(): void {
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             last_check_at TEXT,
             last_status INTEGER,
-            downtime_started_at TEXT
+            downtime_started_at TEXT,
+            notify_alerts INTEGER NOT NULL DEFAULT 1
         )
     `);
+
+    migrateServicesNotifyColumn();
 
     db.run(`
         CREATE TABLE IF NOT EXISTS service_history (

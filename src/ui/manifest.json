@@ -1,6 +1,6 @@
 {
-  "name": "Bybit Balance Monitor",
-  "short_name": "Balance Monitor",
+  "name": "Monitor",
+  "short_name": "Monitor",
   "description": "Monitor Bybit account balances with web interface and Telegram bot",
   "start_url": "./",
   "scope": "./",

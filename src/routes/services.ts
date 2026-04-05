@@ -16,13 +16,14 @@ interface Service {
     last_check_at: string | null;
     last_status: number | null;
     downtime_started_at: string | null;
+    notify_alerts: number;
 }
 
 router.get('/', (_req: Request, res: Response) => {
     try {
         const db = getDatabase();
         const result = db.exec(`
-            SELECT id, name, url, expected_status, check_interval, is_active, created_at, last_check_at, last_status, downtime_started_at
+            SELECT id, name, url, expected_status, check_interval, is_active, created_at, last_check_at, last_status, downtime_started_at, notify_alerts
             FROM services 
             WHERE is_active = 1
         `);
@@ -42,6 +43,7 @@ router.get('/', (_req: Request, res: Response) => {
             last_check_at: row[7],
             last_status: row[8],
             downtime_started_at: row[9],
+            notify_alerts: row[10] ?? 1,
         }));
 
         res.json(services);
@@ -54,7 +56,8 @@ router.get('/', (_req: Request, res: Response) => {
 router.post('/', (req: Request, res: Response, next) => {
     console.log('[Services] POST /api/services called', req.body);
     try {
-        const { name, url, expected_status = 200, check_interval = 60 } = req.body;
+        const { name, url, expected_status = 200, check_interval = 60, notify_alerts = true } = req.body;
+        const notifyFlag = notify_alerts === false || notify_alerts === 0 ? 0 : 1;
 
         if (!name || !url) {
             return res.status(400).json({ error: 'Missing required fields: name, url' });
@@ -62,8 +65,8 @@ router.post('/', (req: Request, res: Response, next) => {
 
         const db = getDatabase();
         db.run(
-            'INSERT INTO services (name, url, expected_status, check_interval, created_at) VALUES (?, ?, ?, ?, ?)',
-            [name, url, expected_status, check_interval, new Date().toISOString()]
+            'INSERT INTO services (name, url, expected_status, check_interval, created_at, notify_alerts) VALUES (?, ?, ?, ?, ?, ?)',
+            [name, url, expected_status, check_interval, new Date().toISOString(), notifyFlag]
         );
 
         // Get the last inserted ID before saving
@@ -93,6 +96,7 @@ router.post('/', (req: Request, res: Response, next) => {
             last_check_at: null,
             last_status: null,
             downtime_started_at: null,
+            notify_alerts: notifyFlag,
         };
         console.log(`[Services] Starting monitoring for: ${name} (${url})`);
 
@@ -107,7 +111,7 @@ router.post('/', (req: Request, res: Response, next) => {
 
         console.log(`[Services] Monitoring started for service id=${id}`);
 
-        res.status(201).json({ id, name, url, expected_status, check_interval });
+        res.status(201).json({ id, name, url, expected_status, check_interval, notify_alerts: notifyFlag });
     } catch (error) {
         console.error('Error creating service:', error);
         res.status(500).json({ error: 'Failed to create service' });
@@ -130,6 +134,37 @@ router.delete('/:id', (req: Request, res: Response) => {
     } catch (error) {
         console.error('Error deleting service:', error);
         res.status(500).json({ error: 'Failed to delete service' });
+    }
+});
+
+router.patch('/:id', (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const serviceId = parseInt(id as string, 10);
+        if (Number.isNaN(serviceId)) {
+            return res.status(400).json({ error: 'Invalid service id' });
+        }
+
+        const { notify_alerts } = req.body;
+        if (notify_alerts === undefined) {
+            return res.status(400).json({ error: 'Missing notify_alerts (boolean or 0/1)' });
+        }
+
+        const notifyFlag = notify_alerts === false || notify_alerts === 0 ? 0 : 1;
+        const db = getDatabase();
+
+        const exists = db.exec('SELECT id FROM services WHERE id = ? AND is_active = 1', [serviceId]);
+        if (!exists.length || !exists[0].values.length) {
+            return res.status(404).json({ error: 'Service not found' });
+        }
+
+        db.run('UPDATE services SET notify_alerts = ? WHERE id = ?', [notifyFlag, serviceId]);
+        saveDatabase();
+
+        res.json({ id: serviceId, notify_alerts: notifyFlag });
+    } catch (error) {
+        console.error('Error updating service:', error);
+        res.status(500).json({ error: 'Failed to update service' });
     }
 });
 

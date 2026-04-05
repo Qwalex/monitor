@@ -8,13 +8,30 @@ export interface Service {
     check_interval: number;
     last_status: number | null;
     downtime_started_at: string | null;
+    /** 1 = send Telegram alerts on down/up, 0 = silent monitoring */
+    notify_alerts: number;
 }
 
 let checkTimers: Map<number, NodeJS.Timeout> = new Map();
 
+function rowToService(row: any[]): Service {
+    return {
+        id: row[0] as number,
+        name: row[1] as string,
+        url: row[2] as string,
+        expected_status: row[3] as number,
+        check_interval: row[4] as number,
+        last_status: row[5] as number | null,
+        downtime_started_at: row[6] as string | null,
+        notify_alerts: (row[7] as number) ?? 1,
+    };
+}
+
 export function startServiceMonitoring(onStatusChange: (service: Service, isUp: boolean, downtime?: number) => void): void {
     const db = getDatabase();
-    const result = db.exec('SELECT id, name, url, expected_status, check_interval, last_status, downtime_started_at FROM services WHERE is_active = 1');
+    const result = db.exec(
+        'SELECT id, name, url, expected_status, check_interval, last_status, downtime_started_at, notify_alerts FROM services WHERE is_active = 1'
+    );
 
     if (result.length === 0 || result[0].values.length === 0) {
         console.log('No services to monitor');
@@ -22,17 +39,7 @@ export function startServiceMonitoring(onStatusChange: (service: Service, isUp: 
     }
 
     for (const row of result[0].values) {
-        const service: Service = {
-            id: row[0] as number,
-            name: row[1] as string,
-            url: row[2] as string,
-            expected_status: row[3] as number,
-            check_interval: row[4] as number,
-            last_status: row[5] as number | null,
-            downtime_started_at: row[6] as string | null,
-        };
-
-        startMonitoringService(service, onStatusChange);
+        startMonitoringService(rowToService(row), onStatusChange);
     }
 
     console.log(`Service monitoring started for ${result[0].values.length} services`);
@@ -47,8 +54,18 @@ function startMonitoringService(
     }
 
     const check = async () => {
-        const result = await checkService(service);
-        await handleCheckResult(service, result, onStatusChange);
+        const db = getDatabase();
+        const fresh = db.exec(
+            'SELECT id, name, url, expected_status, check_interval, last_status, downtime_started_at, notify_alerts FROM services WHERE id = ? AND is_active = 1',
+            [service.id]
+        );
+        if (!fresh.length || !fresh[0].values.length) {
+            stopServiceMonitoring(service.id);
+            return;
+        }
+        const current = rowToService(fresh[0].values[0]);
+        const result = await checkService(current);
+        await handleCheckResult(current, result, onStatusChange);
     };
 
     check();
@@ -92,7 +109,8 @@ async function handleCheckResult(
 ): Promise<void> {
     const db = getDatabase();
     const now = new Date().toISOString();
-    const isUp = result.status === service.expected_status;
+    const expected = Number(service.expected_status);
+    const currUp = Number(result.status) === expected;
 
     db.run(
         'INSERT INTO service_history (service_id, status, response_time, checked_at) VALUES (?, ?, ?, ?)',
@@ -100,35 +118,56 @@ async function handleCheckResult(
     );
 
     const prevStatus = service.last_status;
-    const wasDown = prevStatus !== null && prevStatus !== service.expected_status;
-    const isFirstCheck = prevStatus === null;
+    const prevHealth: 'up' | 'down' | 'unknown' =
+        prevStatus === null
+            ? 'unknown'
+            : Number(prevStatus) === expected
+              ? 'up'
+              : 'down';
 
-    if (isUp) {
-        let downtime: number | undefined;
+    /** Notify only on healthy↔unhealthy transitions, not on every poll or on HTTP code changes while still down. */
+    const becameDown = prevHealth === 'up' && !currUp;
+    const becameUp = prevHealth === 'down' && currUp;
 
-        if (wasDown && service.downtime_started_at) {
-            const downtimeStart = new Date(service.downtime_started_at).getTime();
-            const downtimeMs = Date.now() - downtimeStart;
-            downtime = Math.round(downtimeMs / 1000);
-
-            db.run('UPDATE services SET last_check_at = ?, last_status = ?, downtime_started_at = NULL WHERE id = ?',
-                [now, result.status, service.id]);
-
-            onStatusChange(service, true, downtime);
-        } else {
-            db.run('UPDATE services SET last_check_at = ?, last_status = ? WHERE id = ?',
-                [now, result.status, service.id]);
+    if (becameDown) {
+        db.run('UPDATE services SET last_check_at = ?, last_status = ?, downtime_started_at = ? WHERE id = ?', [
+            now,
+            result.status,
+            now,
+            service.id,
+        ]);
+        if (service.notify_alerts) {
+            onStatusChange(service, false);
+        }
+    } else if (becameUp) {
+        let downtimeSeconds: number | undefined;
+        if (service.downtime_started_at) {
+            downtimeSeconds = Math.round(
+                (Date.now() - new Date(service.downtime_started_at).getTime()) / 1000
+            );
+        }
+        db.run('UPDATE services SET last_check_at = ?, last_status = ?, downtime_started_at = NULL WHERE id = ?', [
+            now,
+            result.status,
+            service.id,
+        ]);
+        if (service.notify_alerts) {
+            onStatusChange(service, true, downtimeSeconds);
         }
     } else {
-        // Only notify if this is NOT the first check (we don't want to spam on first detection)
-        if (!wasDown && !isFirstCheck) {
-            db.run('UPDATE services SET last_check_at = ?, last_status = ?, downtime_started_at = ? WHERE id = ?',
-                [now, result.status, now, service.id]);
-
-            onStatusChange(service, false);
+        if (!currUp && prevHealth === 'down' && !service.downtime_started_at) {
+            db.run('UPDATE services SET last_check_at = ?, last_status = ?, downtime_started_at = ? WHERE id = ?', [
+                now,
+                result.status,
+                now,
+                service.id,
+            ]);
         } else {
-            db.run('UPDATE services SET last_check_at = ?, last_status = ? WHERE id = ?',
-                [now, result.status, service.id]);
+            db.run('UPDATE services SET last_check_at = ?, last_status = ? WHERE id = ?', [
+                now,
+                result.status,
+                service.id,
+            ]);
         }
     }
 

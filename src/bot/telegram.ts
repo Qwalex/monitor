@@ -47,7 +47,7 @@ function setupCommands(): void {
         }
         
         const helpText = `
-🤖 <b>Bybit Balance Monitor</b>
+🤖 <b>Monitor</b>
 
 Команды:
 /accounts - Список аккаунтов и балансы
