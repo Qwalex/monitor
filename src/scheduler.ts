@@ -1,6 +1,8 @@
 import cron from 'node-cron';
 import { getDatabase, saveDatabase } from './database.js';
 import { getAccountBalance, coinRowsFromWallet } from './bybit.js';
+import { buildMntLowAlertHtmlIfNeeded } from './mnt-alert.js';
+import { sendHtmlWithFallback } from './bot/telegram.js';
 
 export function startScheduler(): void {
     cron.schedule('0 * * * *', async () => {
@@ -56,6 +58,11 @@ async function syncAllBalances(): Promise<void> {
                 if (rows.length > 0) {
                     syncedCount++;
                     console.log(`Synced balance for account: ${account.name} (${rows.map((x) => `${x.coin}:${x.balance}`).join(', ')})`);
+                }
+
+                const mntHtml = buildMntLowAlertHtmlIfNeeded(account.id, account.name, rows);
+                if (mntHtml) {
+                    void sendHtmlWithFallback(mntHtml);
                 }
             }
         } catch (error) {

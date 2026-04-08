@@ -9,6 +9,7 @@ import accountsRouter from './routes/accounts.js';
 import balancesRouter from './routes/balances.js';
 import historyRouter from './routes/history.js';
 import servicesRouter from './routes/services.js';
+import settingsRouter from './routes/settings.js';
 import { initTelegramBot, setWebhook, sendServiceDownAlert, sendServiceUpAlert } from './bot/telegram.js';
 import { logVkStartupSummary } from './bot/vk.js';
 import { startVkLongPoll } from './bot/vk-incoming.js';
@@ -66,6 +67,7 @@ app.use(`${API_ROOT}/accounts`, accountsRouter);
 app.use(`${API_ROOT}/balances`, balancesRouter);
 app.use(`${API_ROOT}/history`, historyRouter);
 app.use(`${API_ROOT}/services`, servicesRouter);
+app.use(`${API_ROOT}/settings`, settingsRouter);
 
 setWebhook(app, BASE_PATH);
 

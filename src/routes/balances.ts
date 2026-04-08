@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getDatabase, saveDatabase } from '../database.js';
 import { getAccountBalance, coinRowsFromWallet } from '../bybit.js';
+import { buildMntLowAlertHtmlIfNeeded } from '../mnt-alert.js';
+import { sendHtmlWithFallback } from '../bot/telegram.js';
 
 const router = Router();
 
@@ -184,6 +186,11 @@ router.post('/sync/:accountId', async (req: Request, res: Response) => {
         }
 
         saveDatabase();
+
+        const mntHtml = buildMntLowAlertHtmlIfNeeded(account.id, account.name, rows);
+        if (mntHtml) {
+            void sendHtmlWithFallback(mntHtml);
+        }
 
         res.json({
             success: true,

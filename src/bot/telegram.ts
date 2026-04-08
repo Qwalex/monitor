@@ -2,6 +2,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import { getDatabase, saveDatabase } from '../database.js';
 import { getAccountBalance, coinRowsFromWallet } from '../bybit.js';
 import { htmlToPlain, trySendVkPlain, isVkConfigured } from './vk.js';
+import { buildMntLowAlertHtmlIfNeeded } from '../mnt-alert.js';
 
 let bot: TelegramBot | null = null;
 let authorizedChatId: string | null = null;
@@ -154,7 +155,7 @@ function isAuthorized(chatId: string): boolean {
 }
 
 /** Telegram first; on failure or if Telegram is not configured, VK (if configured). */
-async function sendHtmlWithFallback(html: string): Promise<void> {
+export async function sendHtmlWithFallback(html: string): Promise<void> {
     if (bot && authorizedChatId) {
         try {
             await bot.sendMessage(authorizedChatId, html, { parse_mode: 'HTML' });
@@ -332,6 +333,11 @@ async function syncAllBalances(): Promise<void> {
                         [account.id, r.coin, r.balance, now]
                     );
                 }
+            }
+
+            const mntHtml = buildMntLowAlertHtmlIfNeeded(account.id, account.name, rows);
+            if (mntHtml) {
+                void sendHtmlWithFallback(mntHtml);
             }
         }
     }

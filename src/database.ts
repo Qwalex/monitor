@@ -42,6 +42,18 @@ function migrateServicesNotifyColumn(): void {
     }
 }
 
+function migrateAccountsMntNotifyColumn(): void {
+    if (!db) return;
+    const info = db.exec('PRAGMA table_info(accounts)');
+    if (!info.length || !info[0].values.length) return;
+    const columnNames = new Set(
+        info[0].values.map((row: SqlValue[]) => String(row[1]))
+    );
+    if (!columnNames.has('mnt_low_notified_at')) {
+        db.run('ALTER TABLE accounts ADD COLUMN mnt_low_notified_at TEXT');
+    }
+}
+
 function createTables(): void {
     if (!db) return;
     
@@ -95,6 +107,7 @@ function createTables(): void {
     `);
 
     migrateServicesNotifyColumn();
+    migrateAccountsMntNotifyColumn();
 
     db.run(`
         CREATE TABLE IF NOT EXISTS service_history (
@@ -116,6 +129,47 @@ function createTables(): void {
         CREATE INDEX IF NOT EXISTS idx_service_history_date 
         ON service_history(checked_at)
     `);
+
+    db.run(`
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    `);
+
+    migrateAppSettingsDefaults();
+}
+
+/** Ключи настроек в `app_settings`. */
+export const APP_SETTING = {
+    MNT_ALERT_THRESHOLD: 'mnt_alert_threshold',
+    MNT_LOW_REMINDER_HOURS: 'mnt_low_reminder_hours',
+} as const;
+
+function migrateAppSettingsDefaults(): void {
+    if (!db) return;
+    const defaults: [string, string][] = [
+        [APP_SETTING.MNT_ALERT_THRESHOLD, '2'],
+        [APP_SETTING.MNT_LOW_REMINDER_HOURS, '24'],
+    ];
+    for (const [k, v] of defaults) {
+        db.run(`INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)`, [k, v]);
+    }
+}
+
+export function getAppSetting(key: string, defaultValue: string): string {
+    const database = getDatabase();
+    const r = database.exec('SELECT value FROM app_settings WHERE key = ?', [key]);
+    if (r.length && r[0].values.length > 0) {
+        return String(r[0].values[0][0]);
+    }
+    return defaultValue;
+}
+
+export function setAppSetting(key: string, value: string): void {
+    const database = getDatabase();
+    database.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [key, value]);
+    saveDatabase();
 }
 
 export function saveDatabase(): void {
