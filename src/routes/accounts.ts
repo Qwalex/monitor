@@ -75,6 +75,43 @@ router.post('/', async (req: Request, res: Response) => {
     }
 });
 
+router.put('/:id', async (req: Request, res: Response) => {
+    try {
+        const accountId = parseInt(req.params.id as string, 10);
+        if (Number.isNaN(accountId)) {
+            return res.status(400).json({ error: 'Invalid account id' });
+        }
+
+        const { name, api_key, api_secret, account_type = 'UNIFIED' } = req.body;
+
+        if (!name || !api_key || !api_secret) {
+            return res.status(400).json({ error: 'Missing required fields: name, api_key, api_secret' });
+        }
+
+        const isValid = await validateApiKey(api_key, api_secret, account_type);
+        if (!isValid) {
+            return res.status(400).json({ error: 'Invalid API key or secret' });
+        }
+
+        const db = getDatabase();
+        const exists = db.exec('SELECT id FROM accounts WHERE id = ? AND is_active = 1', [accountId]);
+        if (!exists.length || !exists[0].values.length) {
+            return res.status(404).json({ error: 'Account not found' });
+        }
+
+        db.run(
+            'UPDATE accounts SET name = ?, api_key = ?, api_secret = ?, account_type = ? WHERE id = ?',
+            [name, api_key, api_secret, account_type, accountId]
+        );
+        saveDatabase();
+
+        res.json({ id: accountId, name, api_key, api_secret, account_type });
+    } catch (error) {
+        console.error('Error updating account:', error);
+        res.status(500).json({ error: 'Failed to update account' });
+    }
+});
+
 router.delete('/:id', (req: Request, res: Response) => {
     try {
         const { id } = req.params;

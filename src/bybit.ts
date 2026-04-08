@@ -20,6 +20,46 @@ export interface WalletBalance {
     coin: Balance[];
 }
 
+export interface CoinBalanceRow {
+    coin: string;
+    balance: number;
+}
+
+/**
+ * Строки по монетам из ответа getWalletBalance (Unified и др.).
+ * Нулевые остатки отбрасываем; если монет нет, но есть totalEquity — одна строка USDT.
+ */
+export function coinRowsFromWallet(w: WalletBalance): CoinBalanceRow[] {
+    const raw = w.coin;
+    const rows: CoinBalanceRow[] = [];
+
+    if (raw && Array.isArray(raw)) {
+        for (const c of raw) {
+            const rec = c as unknown as Record<string, string | undefined>;
+            const symbol = String(rec.coin ?? '').trim();
+            if (!symbol) continue;
+            const wb = parseFloat(String(rec.walletBalance ?? rec.equity ?? '0'));
+            if (!Number.isFinite(wb) || Math.abs(wb) < 1e-12) continue;
+            rows.push({ coin: symbol, balance: wb });
+        }
+    }
+
+    rows.sort((a, b) => {
+        if (a.coin === 'USDT') return -1;
+        if (b.coin === 'USDT') return 1;
+        return a.coin.localeCompare(b.coin);
+    });
+
+    if (rows.length === 0) {
+        const te = parseFloat(String(w.totalEquity ?? '0'));
+        if (Number.isFinite(te) && te > 0) {
+            rows.push({ coin: 'USDT', balance: te });
+        }
+    }
+
+    return rows;
+}
+
 function safeBybitErrorSummary(error: unknown): string {
     const e = error as {
         code?: number;

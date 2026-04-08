@@ -1,6 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { getDatabase, saveDatabase } from '../database.js';
-import { getAccountBalance } from '../bybit.js';
+import { getAccountBalance, coinRowsFromWallet } from '../bybit.js';
 import { htmlToPlain, trySendVkPlain, isVkConfigured } from './vk.js';
 
 let bot: TelegramBot | null = null;
@@ -219,12 +219,16 @@ export async function getBalancesMessage(): Promise<string> {
         
         const walletBalance = await getAccountBalance(account);
 
-        if (walletBalance && walletBalance.totalEquity) {
-            const totalEquity = parseFloat(walletBalance.totalEquity || '0');
-            if (totalEquity > 0) {
+        if (walletBalance) {
+            const rows = coinRowsFromWallet(walletBalance);
+            if (rows.length > 0) {
                 hasBalances = true;
                 text += `<b>${account.name}</b>\n`;
-                text += `  USDT: ${totalEquity.toFixed(4)}\n\n`;
+                for (const r of rows) {
+                    const amt = r.balance >= 1 ? r.balance.toFixed(4) : r.balance.toFixed(8).replace(/\.?0+$/, '');
+                    text += `  ${r.coin}: ${amt}\n`;
+                }
+                text += '\n';
             }
         }
     }
@@ -249,6 +253,7 @@ async function getHistoryMessage(): Promise<string> {
         FROM balance_history bh
         JOIN accounts a ON bh.account_id = a.id
         WHERE bh.recorded_at >= ?
+          AND bh.coin != 'PORTFOLIO_USD'
         ORDER BY a.name, bh.recorded_at DESC
     `, [fromDate]);
 
@@ -311,13 +316,22 @@ async function syncAllBalances(): Promise<void> {
         
         const walletBalance = await getAccountBalance(account);
 
-        if (walletBalance && walletBalance.totalEquity) {
-            const totalEquity = parseFloat(walletBalance.totalEquity || '0');
-            if (totalEquity > 0) {
+        if (walletBalance) {
+            const rows = coinRowsFromWallet(walletBalance);
+            const te = parseFloat(String(walletBalance.totalEquity ?? '0'));
+            if (Number.isFinite(te) && te > 0) {
                 db.run(
                     'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
-                    [account.id, 'USDT', totalEquity, now]
+                    [account.id, 'PORTFOLIO_USD', te, now]
                 );
+            }
+            for (const r of rows) {
+                if (r.balance > 0) {
+                    db.run(
+                        'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
+                        [account.id, r.coin, r.balance, now]
+                    );
+                }
             }
         }
     }

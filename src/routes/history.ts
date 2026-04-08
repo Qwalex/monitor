@@ -12,7 +12,7 @@ router.get('/all', (req: Request, res: Response) => {
             SELECT bh.id, bh.account_id, a.name as account_name, bh.coin, bh.balance, bh.recorded_at
             FROM balance_history bh
             JOIN accounts a ON bh.account_id = a.id
-            WHERE 1=1
+            WHERE bh.coin != 'PORTFOLIO_USD'
         `;
         const params: any[] = [];
         
@@ -85,18 +85,22 @@ router.get('/chart', (req: Request, res: Response) => {
             name: row[1]
         })) : [];
 
-        // Get balance history grouped by time slot and account
-        const historyResult = db.exec(`
+        // График: одна точка на аккаунт на час — PORTFOLIO_USD (totalEquity), иначе legacy USDT
+        const historyResult = db.exec(
+            `
             SELECT
                 bh.recorded_at,
                 bh.account_id,
                 a.name as account_name,
-                bh.balance
+                bh.balance,
+                bh.coin
             FROM balance_history bh
             JOIN accounts a ON bh.account_id = a.id
             WHERE bh.recorded_at >= ?
             ORDER BY bh.recorded_at ASC
-        `, [fromDate]);
+        `,
+            [fromDate]
+        );
 
         if (historyResult.length === 0 || historyResult[0].values.length === 0) {
             return res.json({ accounts: [], data: {} });
@@ -105,20 +109,39 @@ router.get('/chart', (req: Request, res: Response) => {
         // Group by time slots (hourly)
         const timeSlots: Map<string, Map<number, number>> = new Map();
 
+        type SlotSource = { balance: number; priority: number };
+        const slotSources: Map<string, Map<number, SlotSource>> = new Map();
+
         for (const row of historyResult[0].values) {
             const timestamp = row[0] as string;
             const accountId = row[1] as number;
             const balance = row[3] as number;
+            const coin = String(row[4] ?? '');
+            if (coin !== 'PORTFOLIO_USD' && coin !== 'USDT') {
+                continue;
+            }
+            const priority = coin === 'PORTFOLIO_USD' ? 2 : 1;
 
-            // Round to hour
             const date = new Date(timestamp);
             date.setMinutes(0, 0, 0);
             const slotKey = date.toISOString();
 
-            if (!timeSlots.has(slotKey)) {
-                timeSlots.set(slotKey, new Map());
+            if (!slotSources.has(slotKey)) {
+                slotSources.set(slotKey, new Map());
             }
-            timeSlots.get(slotKey)!.set(accountId, balance);
+            const accMap = slotSources.get(slotKey)!;
+            const prev = accMap.get(accountId);
+            if (!prev || priority > prev.priority) {
+                accMap.set(accountId, { balance, priority });
+            }
+        }
+
+        for (const [slotKey, accMap] of slotSources) {
+            const m = new Map<number, number>();
+            for (const [aid, src] of accMap) {
+                m.set(aid, src.balance);
+            }
+            timeSlots.set(slotKey, m);
         }
 
         // Build response

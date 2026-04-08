@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDatabase, saveDatabase } from '../database.js';
-import { getAccountBalance } from '../bybit.js';
+import { getAccountBalance, coinRowsFromWallet } from '../bybit.js';
 
 const router = Router();
 
@@ -15,6 +15,8 @@ interface Account {
 interface AccountBalance {
     accountId: number;
     accountName: string;
+    /** Суммарная оценка в USDT (если Bybit отдал totalEquity) */
+    totalEquityUsd?: number;
     balances: {
         coin: string;
         balance: number;
@@ -45,22 +47,33 @@ router.get('/', async (_req: Request, res: Response) => {
         for (const account of accounts) {
             const walletBalance = await getAccountBalance(account);
 
-            if (walletBalance && walletBalance.totalEquity) {
-                const totalEquity = parseFloat(walletBalance.totalEquity || '0');
-                accountBalances.push({
-                    accountId: account.id,
-                    accountName: account.name,
-                    balances: [{
-                        coin: 'USDT',
-                        balance: totalEquity,
-                    }],
-                });
+            if (walletBalance) {
+                const rows = coinRowsFromWallet(walletBalance);
+                const totalEq = parseFloat(String(walletBalance.totalEquity ?? '0'));
+                if (rows.length > 0) {
+                    accountBalances.push({
+                        accountId: account.id,
+                        accountName: account.name,
+                        totalEquityUsd: Number.isFinite(totalEq) ? totalEq : undefined,
+                        balances: rows.map((r) => ({
+                            coin: r.coin,
+                            balance: r.balance,
+                        })),
+                    });
+                } else {
+                    accountBalances.push({
+                        accountId: account.id,
+                        accountName: account.name,
+                        balances: [],
+                        balanceUnavailable: false,
+                    });
+                }
             } else {
                 accountBalances.push({
                     accountId: account.id,
                     accountName: account.name,
                     balances: [],
-                    balanceUnavailable: !walletBalance,
+                    balanceUnavailable: true,
                 });
             }
         }
@@ -96,18 +109,23 @@ router.get('/:accountId', async (req: Request, res: Response) => {
         
         const walletBalance = await getAccountBalance(account);
 
-        if (!walletBalance || !walletBalance.totalEquity) {
-            return res.json({ accountId: account.id, accountName: account.name, balances: [] });
+        if (!walletBalance) {
+            return res.json({
+                accountId: account.id,
+                accountName: account.name,
+                balances: [],
+                balanceUnavailable: true,
+            });
         }
 
-        const totalEquity = parseFloat(walletBalance.totalEquity || '0');
+        const rows = coinRowsFromWallet(walletBalance);
+        const totalEq = parseFloat(String(walletBalance.totalEquity ?? '0'));
         res.json({
             accountId: account.id,
             accountName: account.name,
-            balances: [{
-                coin: 'USDT',
-                balance: totalEquity,
-            }]
+            totalEquityUsd: Number.isFinite(totalEq) ? totalEq : undefined,
+            balances: rows.map((r) => ({ coin: r.coin, balance: r.balance })),
+            balanceUnavailable: rows.length === 0,
         });
     } catch (error) {
         console.error('Error fetching account balance:', error);
@@ -139,28 +157,37 @@ router.post('/sync/:accountId', async (req: Request, res: Response) => {
         
         const walletBalance = await getAccountBalance(account);
 
-        if (!walletBalance || !walletBalance.totalEquity) {
+        if (!walletBalance) {
             return res.status(500).json({ error: 'Failed to fetch balance from Bybit' });
         }
 
-        const now = new Date().toISOString();
-        const totalEquity = parseFloat(walletBalance.totalEquity || '0');
+        const rows = coinRowsFromWallet(walletBalance);
+        if (rows.length === 0) {
+            return res.status(500).json({ error: 'No coin balances from Bybit' });
+        }
 
-        if (totalEquity > 0) {
+        const now = new Date().toISOString();
+        const te = parseFloat(String(walletBalance.totalEquity ?? '0'));
+        if (Number.isFinite(te) && te > 0) {
             db.run(
                 'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
-                [account.id, 'USDT', totalEquity, now]
+                [account.id, 'PORTFOLIO_USD', te, now]
             );
+        }
+        for (const r of rows) {
+            if (r.balance > 0) {
+                db.run(
+                    'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
+                    [account.id, r.coin, r.balance, now]
+                );
+            }
         }
 
         saveDatabase();
 
         res.json({
             success: true,
-            balances: [{
-                coin: 'USDT',
-                balance: totalEquity,
-            }]
+            balances: rows.map((r) => ({ coin: r.coin, balance: r.balance })),
         });
     } catch (error) {
         console.error('Error syncing balance:', error);

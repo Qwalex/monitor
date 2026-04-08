@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { getDatabase, saveDatabase } from './database.js';
-import { getAccountBalance } from './bybit.js';
+import { getAccountBalance, coinRowsFromWallet } from './bybit.js';
 
 export function startScheduler(): void {
     cron.schedule('0 * * * *', async () => {
@@ -36,16 +36,27 @@ async function syncAllBalances(): Promise<void> {
         try {
             const walletBalance = await getAccountBalance(account);
 
-            if (walletBalance && walletBalance.totalEquity) {
-                const totalEquity = parseFloat(walletBalance.totalEquity || '0');
-                if (totalEquity > 0) {
+            if (walletBalance) {
+                const rows = coinRowsFromWallet(walletBalance);
+                const te = parseFloat(String(walletBalance.totalEquity ?? '0'));
+                if (Number.isFinite(te) && te > 0) {
                     db.run(
                         'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
-                        [account.id, 'USDT', totalEquity, now]
+                        [account.id, 'PORTFOLIO_USD', te, now]
                     );
                 }
-                syncedCount++;
-                console.log(`Synced balance for account: ${account.name} - ${totalEquity} USDT`);
+                for (const r of rows) {
+                    if (r.balance > 0) {
+                        db.run(
+                            'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
+                            [account.id, r.coin, r.balance, now]
+                        );
+                    }
+                }
+                if (rows.length > 0) {
+                    syncedCount++;
+                    console.log(`Synced balance for account: ${account.name} (${rows.map((x) => `${x.coin}:${x.balance}`).join(', ')})`);
+                }
             }
         } catch (error) {
             console.error(`Error syncing account ${account.name}:`, error);

@@ -247,6 +247,20 @@
             color: var(--text-muted);
         }
 
+        .balance-card-equity {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin: -4px 0 4px 0;
+        }
+
+        .icon-btn.edit {
+            color: var(--text-secondary);
+        }
+
+        .icon-btn.edit:hover {
+            color: var(--primary);
+        }
+
         .service-card {
             background: var(--bg-primary);
             border: 1px solid var(--border-color);
@@ -1162,6 +1176,47 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="edit-account-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Изменить аккаунт</h3>
+            </div>
+            <form id="edit-account-form" onsubmit="updateAccount(event)">
+                <input type="hidden" name="account_id" id="edit-account-id-field" value="">
+                <div class="form-group">
+                    <label class="form-label">Название аккаунта</label>
+                    <input type="text" class="form-input" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">API Key</label>
+                    <input type="text" class="form-input" name="api_key" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">API Secret</label>
+                    <input type="password" class="form-input" name="api_secret" required autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Тип аккаунта</label>
+                    <select class="form-select" name="account_type">
+                        <option value="UNIFIED">Unified (UTA)</option>
+                        <option value="CONTRACT">Contract</option>
+                        <option value="SPOT">Spot</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <button type="button" class="btn btn-secondary" onclick="validateEditApiKey()">
+                        Проверить ключ
+                    </button>
+                    <div id="edit-validate-status"></div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditAccountModal()">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="add-service-modal">
         <div class="modal">
             <div class="modal-header">
@@ -1272,30 +1327,55 @@
                     return;
                 }
 
+                function formatCoinAmount(n) {
+                    if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
+                    const abs = Math.abs(n);
+                    if (abs >= 1) return n.toFixed(4);
+                    const s = n.toFixed(8).replace(/\.?0+$/, '');
+                    return s || '0';
+                }
+
                 let html = '';
                 data.forEach(account => {
+                    const equityLine =
+                        account.totalEquityUsd != null && account.balances.length > 0
+                            ? `<div class="balance-card-equity">Оценка портфеля (USD, Bybit): ~${formatCoinAmount(account.totalEquityUsd)}</div>`
+                            : '';
+
                     const balancesHtml = account.balances.length > 0
-                        ? account.balances.map(b => `
+                        ? equityLine +
+                          account.balances
+                              .map(
+                                  (b) => `
                             <div class="balance-card-item">
-                                <span class="amount">${b.balance.toFixed(4)}</span>
+                                <span class="coin">${b.coin}</span>
+                                <span class="amount">${formatCoinAmount(b.balance)}</span>
                             </div>
-                        `).join('')
+                        `
+                              )
+                              .join('')
                         : account.balanceUnavailable
-                            ? '<div class="balance-card-empty">Нет ответа от Bybit — проверьте ключ, тип аккаунта (UNIFIED/…) и IP whitelist</div>'
-                            : '<div class="balance-card-empty">Нет баланса</div>';
+                          ? '<div class="balance-card-empty">Нет ответа от Bybit — проверьте ключ, тип аккаунта (UNIFIED/…) и IP whitelist</div>'
+                          : '<div class="balance-card-empty">Нет баланса</div>';
 
                     html += `
                         <div class="balance-card">
                             <div class="balance-card-header">
                                 <span class="balance-card-account">${account.accountName}</span>
                                 <div class="balance-card-actions">
-                                    <button class="icon-btn sync" onclick="syncAccount(${account.accountId})" title="Синхронизировать">
+                                    <button type="button" class="icon-btn edit" onclick="openEditAccountModal(${account.accountId})" title="Изменить">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                        </svg>
+                                    </button>
+                                    <button type="button" class="icon-btn sync" onclick="syncAccount(${account.accountId})" title="Синхронизировать">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M23 4v6h-6M1 20v-6h6"/>
                                             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
                                         </svg>
                                     </button>
-                                    <button class="icon-btn danger" onclick="deleteAccount(${account.accountId})" title="Удалить">
+                                    <button type="button" class="icon-btn danger" onclick="deleteAccount(${account.accountId})" title="Удалить">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                                         </svg>
@@ -1792,6 +1872,90 @@
             }
         }
 
+        async function openEditAccountModal(id) {
+            try {
+                const response = await fetch(basePath + '/api/accounts');
+                const list = await response.json();
+                const acc = list.find((a) => a.id === id);
+                if (!acc) {
+                    showToast('Аккаунт не найден', 'error');
+                    return;
+                }
+                const form = document.getElementById('edit-account-form');
+                document.getElementById('edit-account-id-field').value = acc.id;
+                form.name.value = acc.name;
+                form.api_key.value = acc.api_key;
+                form.api_secret.value = acc.api_secret;
+                form.account_type.value = acc.account_type || 'UNIFIED';
+                document.getElementById('edit-validate-status').innerHTML = '';
+                document.getElementById('edit-account-modal').classList.add('active');
+            } catch (e) {
+                showToast('Не удалось загрузить аккаунт', 'error');
+            }
+        }
+
+        function closeEditAccountModal() {
+            document.getElementById('edit-account-modal').classList.remove('active');
+            document.getElementById('edit-validate-status').innerHTML = '';
+        }
+
+        async function validateEditApiKey() {
+            const form = document.getElementById('edit-account-form');
+            const apiKey = form.api_key.value;
+            const apiSecret = form.api_secret.value;
+            const accountType = form.account_type.value;
+            if (!apiKey || !apiSecret) {
+                showToast('Введите API ключ и секрет', 'error');
+                return;
+            }
+            const statusDiv = document.getElementById('edit-validate-status');
+            statusDiv.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+            try {
+                const response = await fetch(basePath + '/api/accounts/validate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret, account_type: accountType })
+                });
+                const data = await response.json();
+                if (data.valid) {
+                    statusDiv.innerHTML = '<div class="validate-status valid">✓ Ключ валиден</div>';
+                } else {
+                    statusDiv.innerHTML = '<div class="validate-status invalid">✗ Неверный ключ</div>';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = '<div class="validate-status invalid">✗ Ошибка проверки</div>';
+            }
+        }
+
+        async function updateAccount(event) {
+            event.preventDefault();
+            const form = event.target;
+            const id = document.getElementById('edit-account-id-field').value;
+            const formData = new FormData(form);
+            try {
+                const response = await fetch(basePath + `/api/accounts/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: formData.get('name'),
+                        api_key: formData.get('api_key'),
+                        api_secret: formData.get('api_secret'),
+                        account_type: formData.get('account_type')
+                    })
+                });
+                if (response.ok) {
+                    showToast('Аккаунт обновлён', 'success');
+                    closeEditAccountModal();
+                    loadBalances(false);
+                } else {
+                    const err = await response.json().catch(() => ({}));
+                    showToast(err.error || 'Ошибка сохранения', 'error');
+                }
+            } catch (error) {
+                showToast('Ошибка сохранения аккаунта', 'error');
+            }
+        }
+
         async function syncAccount(id) {
             try {
                 const response = await fetch(basePath + `/api/balances/sync/${id}`, { method: 'POST' });
@@ -1954,6 +2118,7 @@
 
         // Expose functions to global scope for onclick handlers
         window.openAddModal = openAddModal;
+        window.openEditAccountModal = openEditAccountModal;
         window.closeAddModal = closeAddModal;
         window.validateApiKey = validateApiKey;
         window.addAccount = addAccount;
