@@ -1115,10 +1115,10 @@
                 <div class="card-header">
                     <h2 class="card-title">Общий баланс</h2>
                     <div class="period-selector">
-                        <button class="period-btn active" onclick="setPeriod('24h')">24ч</button>
-                        <button class="period-btn" onclick="setPeriod('7d')">7д</button>
-                        <button class="period-btn" onclick="setPeriod('30d')">30д</button>
-                        <button class="period-btn" onclick="setPeriod('all')">Всё</button>
+                        <button type="button" class="period-btn active" data-period="24h" onclick="setPeriod('24h')">24ч</button>
+                        <button type="button" class="period-btn" data-period="7d" onclick="setPeriod('7d')">7д</button>
+                        <button type="button" class="period-btn" data-period="30d" onclick="setPeriod('30d')">30д</button>
+                        <button type="button" class="period-btn" data-period="all" onclick="setPeriod('all')">Всё</button>
                     </div>
                 </div>
                 <div class="chart-container" id="main-chart-container">
@@ -1800,8 +1800,9 @@
 
         function setPeriod(period) {
             currentPeriod = period;
-            document.querySelectorAll('.period-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            document.querySelectorAll('.period-btn').forEach((btn) => {
+                btn.classList.toggle('active', btn.getAttribute('data-period') === period);
+            });
             loadChart();
         }
 
@@ -2208,7 +2209,8 @@
         window.openEditServiceModal = openEditServiceModal;
         window.closeEditServiceModal = closeEditServiceModal;
         window.saveEditedService = saveEditedService;
-        window.updatePeriod = updatePeriod;
+        window.setPeriod = setPeriod;
+        window.updatePeriod = setPeriod;
         window.toggleHistoryGroup = toggleHistoryGroup;
 
         // Register Service Worker for PWA
