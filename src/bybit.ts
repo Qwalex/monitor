@@ -26,6 +26,22 @@ export interface CoinBalanceRow {
 }
 
 /**
+ * Баланс по монете для отображения: equity (как у Bybit в кошельке UTA) —
+ * walletBalance − spotBorrow + unrealisedPnl + опционы; иначе walletBalance.
+ * Так учитывается USDT в позициях (UPL); spot-заморозка в ордерах входит в walletBalance.
+ */
+function coinDisplayBalance(rec: Record<string, string | undefined>): number {
+    const eqStr = rec.equity;
+    const wbStr = rec.walletBalance;
+    if (eqStr !== undefined && eqStr !== '') {
+        const eq = parseFloat(String(eqStr));
+        if (Number.isFinite(eq)) return eq;
+    }
+    const wb = parseFloat(String(wbStr ?? '0'));
+    return Number.isFinite(wb) ? wb : NaN;
+}
+
+/**
  * Строки по монетам из ответа getWalletBalance (Unified и др.).
  * Нулевые остатки отбрасываем; если монет нет, но есть totalEquity — одна строка USDT.
  */
@@ -38,7 +54,7 @@ export function coinRowsFromWallet(w: WalletBalance): CoinBalanceRow[] {
             const rec = c as unknown as Record<string, string | undefined>;
             const symbol = String(rec.coin ?? '').trim();
             if (!symbol) continue;
-            const wb = parseFloat(String(rec.walletBalance ?? rec.equity ?? '0'));
+            const wb = coinDisplayBalance(rec);
             if (!Number.isFinite(wb) || Math.abs(wb) < 1e-12) continue;
             rows.push({ coin: symbol, balance: wb });
         }

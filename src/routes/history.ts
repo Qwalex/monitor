@@ -78,8 +78,10 @@ router.get('/chart', (req: Request, res: Response) => {
                 fromDate = '1970-01-01T00:00:00.000Z';
         }
 
-        // Get all accounts
-        const accountsResult = db.exec('SELECT id, name FROM accounts ORDER BY id');
+        // Только активные аккаунты — скрытые/«удалённые» не показываем на графиках
+        const accountsResult = db.exec(
+            'SELECT id, name FROM accounts WHERE is_active = 1 ORDER BY id'
+        );
         const accounts = accountsResult.length > 0 ? accountsResult[0].values.map((row: any[]) => ({
             id: row[0],
             name: row[1]
@@ -95,7 +97,7 @@ router.get('/chart', (req: Request, res: Response) => {
                 bh.balance,
                 bh.coin
             FROM balance_history bh
-            JOIN accounts a ON bh.account_id = a.id
+            JOIN accounts a ON bh.account_id = a.id AND a.is_active = 1
             WHERE bh.recorded_at >= ?
             ORDER BY bh.recorded_at ASC
         `,

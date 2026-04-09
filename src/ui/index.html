@@ -581,10 +581,17 @@
             background: var(--bg-card);
             padding: 4px;
             border-radius: 10px;
-            width: fit-content;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            flex-wrap: nowrap;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
         }
 
         .tab {
+            flex: 0 0 auto;
             padding: 10px 20px;
             border-radius: 8px;
             font-size: 14px;
@@ -594,6 +601,7 @@
             background: transparent;
             color: var(--text-secondary);
             border: none;
+            white-space: nowrap;
         }
 
         .tab.active {
@@ -987,10 +995,9 @@
                 font-size: 22px;
             }
             .tab {
-                width: 100%;
                 text-align: center;
                 border-radius: 8px;
-                padding: 10px;
+                padding: 10px 16px;
             }
 
             .tab.active {
@@ -1686,6 +1693,14 @@
 
                 // Render individual charts for each account
                 const container = document.getElementById('individual-charts');
+                for (const k of Object.keys(individualCharts)) {
+                    try {
+                        individualCharts[k].destroy();
+                    } catch (e) {
+                        /* noop */
+                    }
+                    delete individualCharts[k];
+                }
                 container.innerHTML = '';
 
                 if (data.accountData) {
@@ -1716,11 +1731,6 @@
                             const date = new Date(ts);
                             return date.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                         });
-
-                        // Destroy previous chart if exists
-                        if (individualCharts[accountName]) {
-                            individualCharts[accountName].destroy();
-                        }
 
                         individualCharts[accountName] = new Chart(accCtx, {
                             type: 'line',
