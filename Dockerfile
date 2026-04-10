@@ -3,8 +3,8 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-# bybit-api тянет optional webpack/ts-loader — без полного дерева в lock `npm ci` падает; рантайму они не нужны
-RUN npm ci --omit=optional
+
+RUN npm ci
 
 COPY . .
 RUN npm run build && npm prune --omit=dev
