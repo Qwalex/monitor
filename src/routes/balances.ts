@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getDatabase, saveDatabase } from '../database.js';
+import { accountsCollection, balanceHistoryCollection, nextId } from '../database.js';
 import { getAccountBalance, coinRowsFromWallet } from '../bybit.js';
 import { buildMntLowAlertHtmlIfNeeded } from '../mnt-alert.js';
 import { sendHtmlWithFallback } from '../bot/telegram.js';
@@ -29,21 +29,19 @@ interface AccountBalance {
 
 router.get('/', async (_req: Request, res: Response) => {
     try {
-        const db = getDatabase();
-        const result = db.exec('SELECT id, name, api_key, api_secret, account_type FROM accounts WHERE is_active = 1');
-        
-        if (result.length === 0 || result[0].values.length === 0) {
-            return res.json([]);
-        }
-        
-        const accounts: Account[] = result[0].values.map((row: any[]) => ({
-            id: row[0],
-            name: row[1],
-            apiKey: row[2],
-            apiSecret: row[3],
-            accountType: row[4],
+        const docs = await accountsCollection()
+            .find({ is_active: 1 })
+            .project({ _id: 1, name: 1, api_key: 1, api_secret: 1, account_type: 1 })
+            .toArray();
+
+        const accounts: Account[] = docs.map((d) => ({
+            id: d._id,
+            name: d.name,
+            apiKey: d.api_key,
+            apiSecret: d.api_secret,
+            accountType: d.account_type,
         }));
-        
+
         const accountBalances: AccountBalance[] = [];
 
         for (const account of accounts) {
@@ -79,7 +77,7 @@ router.get('/', async (_req: Request, res: Response) => {
                 });
             }
         }
-        
+
         res.json(accountBalances);
     } catch (error) {
         console.error('Error fetching balances:', error);
@@ -89,26 +87,24 @@ router.get('/', async (_req: Request, res: Response) => {
 
 router.get('/:accountId', async (req: Request, res: Response) => {
     try {
-        const { accountId } = req.params;
-        const db = getDatabase();
-        
-        const result = db.exec(
-            'SELECT id, name, api_key, api_secret, account_type FROM accounts WHERE id = ? AND is_active = 1',
-            [accountId]
-        );
-        
-        if (result.length === 0 || result[0].values.length === 0) {
+        const accountId = parseInt(req.params.accountId as string, 10);
+        if (Number.isNaN(accountId)) {
+            return res.status(400).json({ error: 'Invalid account id' });
+        }
+
+        const d = await accountsCollection().findOne({ _id: accountId, is_active: 1 });
+        if (!d) {
             return res.status(404).json({ error: 'Account not found' });
         }
-        
+
         const account: Account = {
-            id: result[0].values[0][0] as number,
-            name: result[0].values[0][1] as string,
-            apiKey: result[0].values[0][2] as string,
-            apiSecret: result[0].values[0][3] as string,
-            accountType: result[0].values[0][4] as string,
+            id: d._id,
+            name: d.name,
+            apiKey: d.api_key,
+            apiSecret: d.api_secret,
+            accountType: d.account_type,
         };
-        
+
         const walletBalance = await getAccountBalance(account);
 
         if (!walletBalance) {
@@ -137,26 +133,24 @@ router.get('/:accountId', async (req: Request, res: Response) => {
 
 router.post('/sync/:accountId', async (req: Request, res: Response) => {
     try {
-        const { accountId } = req.params;
-        const db = getDatabase();
-        
-        const result = db.exec(
-            'SELECT id, name, api_key, api_secret, account_type FROM accounts WHERE id = ? AND is_active = 1',
-            [accountId]
-        );
-        
-        if (result.length === 0 || result[0].values.length === 0) {
+        const accountId = parseInt(req.params.accountId as string, 10);
+        if (Number.isNaN(accountId)) {
+            return res.status(400).json({ error: 'Invalid account id' });
+        }
+
+        const d = await accountsCollection().findOne({ _id: accountId, is_active: 1 });
+        if (!d) {
             return res.status(404).json({ error: 'Account not found' });
         }
-        
+
         const account: Account = {
-            id: result[0].values[0][0] as number,
-            name: result[0].values[0][1] as string,
-            apiKey: result[0].values[0][2] as string,
-            apiSecret: result[0].values[0][3] as string,
-            accountType: result[0].values[0][4] as string,
+            id: d._id,
+            name: d.name,
+            apiKey: d.api_key,
+            apiSecret: d.api_secret,
+            accountType: d.account_type,
         };
-        
+
         const walletBalance = await getAccountBalance(account);
 
         if (!walletBalance) {
@@ -170,24 +164,33 @@ router.post('/sync/:accountId', async (req: Request, res: Response) => {
 
         const now = new Date().toISOString();
         const te = parseFloat(String(walletBalance.totalEquity ?? '0'));
+        const inserts: { _id: number; account_id: number; coin: string; balance: number; recorded_at: string }[] = [];
+
         if (Number.isFinite(te) && te > 0) {
-            db.run(
-                'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
-                [account.id, 'PORTFOLIO_USD', te, now]
-            );
+            inserts.push({
+                _id: await nextId('balance_history'),
+                account_id: account.id,
+                coin: 'PORTFOLIO_USD',
+                balance: te,
+                recorded_at: now,
+            });
         }
         for (const r of rows) {
             if (r.balance > 0) {
-                db.run(
-                    'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
-                    [account.id, r.coin, r.balance, now]
-                );
+                inserts.push({
+                    _id: await nextId('balance_history'),
+                    account_id: account.id,
+                    coin: r.coin,
+                    balance: r.balance,
+                    recorded_at: now,
+                });
             }
         }
+        if (inserts.length > 0) {
+            await balanceHistoryCollection().insertMany(inserts);
+        }
 
-        saveDatabase();
-
-        const mntHtml = buildMntLowAlertHtmlIfNeeded(account.id, account.name, rows);
+        const mntHtml = await buildMntLowAlertHtmlIfNeeded(account.id, account.name, rows);
         if (mntHtml) {
             void sendHtmlWithFallback(mntHtml);
         }

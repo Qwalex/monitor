@@ -1,5 +1,5 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { getDatabase, saveDatabase } from '../database.js';
+import { accountsCollection, balanceHistoryCollection, nextId } from '../database.js';
 import { getAccountBalance, coinRowsFromWallet } from '../bybit.js';
 import { htmlToPlain, trySendVkPlain, isVkConfigured } from './vk.js';
 import { buildMntLowAlertHtmlIfNeeded } from '../mnt-alert.js';
@@ -178,44 +178,45 @@ export async function sendHtmlWithFallback(html: string): Promise<void> {
 }
 
 async function getAccountsMessage(): Promise<string> {
-    const db = getDatabase();
-    const result = db.exec('SELECT id, name, account_type FROM accounts WHERE is_active = 1');
-    
-    if (result.length === 0 || result[0].values.length === 0) {
+    const docs = await accountsCollection()
+        .find({ is_active: 1 })
+        .project({ name: 1, account_type: 1 })
+        .sort({ _id: 1 })
+        .toArray();
+
+    if (docs.length === 0) {
         return 'Нет добавленных аккаунтов.';
     }
-    
+
     let text = '<b>📋 Ваши аккаунты:</b>\n\n';
-    
-    for (const row of result[0].values) {
-        const id = row[0] as number;
-        const name = row[1] as string;
-        const accountType = row[2] as string;
-        
-        text += `• ${name} (${accountType})\n`;
+
+    for (const d of docs) {
+        text += `• ${d.name} (${d.account_type})\n`;
     }
-    
+
     return text;
 }
 
 export async function getBalancesMessage(): Promise<string> {
-    const db = getDatabase();
-    const result = db.exec('SELECT id, name, api_key, api_secret, account_type FROM accounts WHERE is_active = 1');
-    
-    if (result.length === 0 || result[0].values.length === 0) {
+    const docs = await accountsCollection()
+        .find({ is_active: 1 })
+        .project({ _id: 1, name: 1, api_key: 1, api_secret: 1, account_type: 1 })
+        .toArray();
+
+    if (docs.length === 0) {
         return 'Нет добавленных аккаунтов.';
     }
-    
+
     let text = '<b>💰 Балансы:</b>\n\n';
     let hasBalances = false;
-    
-    for (const row of result[0].values) {
+
+    for (const d of docs) {
         const account = {
-            id: row[0] as number,
-            name: row[1] as string,
-            apiKey: row[2] as string,
-            apiSecret: row[3] as string,
-            accountType: row[4] as string,
+            id: d._id,
+            name: d.name,
+            apiKey: d.api_key,
+            apiSecret: d.api_secret,
+            accountType: d.account_type,
         };
         
         const walletBalance = await getAccountBalance(account);
@@ -242,34 +243,48 @@ export async function getBalancesMessage(): Promise<string> {
 }
 
 async function getHistoryMessage(): Promise<string> {
-    const db = getDatabase();
     const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    const result = db.exec(`
-        SELECT
-            a.name,
-            bh.coin,
-            bh.balance,
-            bh.recorded_at
-        FROM balance_history bh
-        JOIN accounts a ON bh.account_id = a.id
-        WHERE bh.recorded_at >= ?
-          AND bh.coin != 'PORTFOLIO_USD'
-        ORDER BY a.name, bh.recorded_at DESC
-    `, [fromDate]);
+    const flat = await balanceHistoryCollection()
+        .aggregate<{ name: string; coin: string; balance: number; recorded_at: string }>([
+            {
+                $match: {
+                    recorded_at: { $gte: fromDate },
+                    coin: { $ne: 'PORTFOLIO_USD' },
+                },
+            },
+            {
+                $lookup: {
+                    from: 'accounts',
+                    localField: 'account_id',
+                    foreignField: '_id',
+                    as: 'acc',
+                },
+            },
+            { $unwind: '$acc' },
+            { $sort: { 'acc.name': 1, recorded_at: -1 } },
+            {
+                $project: {
+                    name: '$acc.name',
+                    coin: 1,
+                    balance: 1,
+                    recorded_at: 1,
+                },
+            },
+        ])
+        .toArray();
 
-    if (result.length === 0 || result[0].values.length === 0) {
+    if (flat.length === 0) {
         return 'Нет данных за последние 24 часа.';
     }
 
-    // Group by account
-    const grouped: Record<string, { coin: string, balance: number, recorded_at: string }[]> = {};
+    const grouped: Record<string, { coin: string; balance: number; recorded_at: string }[]> = {};
 
-    for (const row of result[0].values) {
-        const name = row[0] as string;
-        const coin = row[1] as string;
-        const balance = row[2] as number;
-        const recorded_at = row[3] as string;
+    for (const row of flat) {
+        const name = row.name;
+        const coin = row.coin;
+        const balance = row.balance;
+        const recorded_at = row.recorded_at;
 
         if (!grouped[name]) {
             grouped[name] = [];
@@ -297,52 +312,69 @@ async function getHistoryMessage(): Promise<string> {
 }
 
 async function syncAllBalances(): Promise<void> {
-    const db = getDatabase();
-    const result = db.exec('SELECT id, name, api_key, api_secret, account_type FROM accounts WHERE is_active = 1');
-    
-    if (result.length === 0 || result[0].values.length === 0) {
+    const accountRows = await accountsCollection()
+        .find({ is_active: 1 })
+        .project({ _id: 1, name: 1, api_key: 1, api_secret: 1, account_type: 1 })
+        .toArray();
+
+    if (accountRows.length === 0) {
         return;
     }
-    
+
     const now = new Date().toISOString();
-    
-    for (const row of result[0].values) {
+
+    for (const row of accountRows) {
         const account = {
-            id: row[0] as number,
-            name: row[1] as string,
-            apiKey: row[2] as string,
-            apiSecret: row[3] as string,
-            accountType: row[4] as string,
+            id: row._id,
+            name: row.name,
+            apiKey: row.api_key,
+            apiSecret: row.api_secret,
+            accountType: row.account_type,
         };
-        
+
         const walletBalance = await getAccountBalance(account);
 
         if (walletBalance) {
-            const rows = coinRowsFromWallet(walletBalance);
+            const coinRows = coinRowsFromWallet(walletBalance);
             const te = parseFloat(String(walletBalance.totalEquity ?? '0'));
+            const inserts: {
+                _id: number;
+                account_id: number;
+                coin: string;
+                balance: number;
+                recorded_at: string;
+            }[] = [];
+
             if (Number.isFinite(te) && te > 0) {
-                db.run(
-                    'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
-                    [account.id, 'PORTFOLIO_USD', te, now]
-                );
+                inserts.push({
+                    _id: await nextId('balance_history'),
+                    account_id: account.id,
+                    coin: 'PORTFOLIO_USD',
+                    balance: te,
+                    recorded_at: now,
+                });
             }
-            for (const r of rows) {
+            for (const r of coinRows) {
                 if (r.balance > 0) {
-                    db.run(
-                        'INSERT INTO balance_history (account_id, coin, balance, recorded_at) VALUES (?, ?, ?, ?)',
-                        [account.id, r.coin, r.balance, now]
-                    );
+                    inserts.push({
+                        _id: await nextId('balance_history'),
+                        account_id: account.id,
+                        coin: r.coin,
+                        balance: r.balance,
+                        recorded_at: now,
+                    });
                 }
             }
+            if (inserts.length > 0) {
+                await balanceHistoryCollection().insertMany(inserts);
+            }
 
-            const mntHtml = buildMntLowAlertHtmlIfNeeded(account.id, account.name, rows);
+            const mntHtml = await buildMntLowAlertHtmlIfNeeded(account.id, account.name, coinRows);
             if (mntHtml) {
                 void sendHtmlWithFallback(mntHtml);
             }
         }
     }
-    
-    saveDatabase();
 }
 
 export async function sendBalanceReport(): Promise<void> {

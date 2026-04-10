@@ -1,17 +1,24 @@
 version: '3.8'
 
 services:
+  mongo:
+    image: mongo:7
+    container_name: monitor-mongo
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
   monitor:
     image: ghcr.io/qwalex/monitor:latest
     container_name: monitor
+    depends_on:
+      - mongo
     ports:
       - "8083:3000"
-    volumes:
-      - ./data:/app/data
     environment:
       - PORT=3000
       - BASE_PATH=/monitor
-      - DATABASE_PATH=/app/data/monitor.db
+      - MONGODB_URI=mongodb://mongo:27017/monitor
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - VK_ACCESS_TOKEN=${VK_ACCESS_TOKEN}
@@ -23,4 +30,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 40s
+
+volumes:
+  mongo_data:

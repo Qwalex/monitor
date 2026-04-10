@@ -3,12 +3,12 @@ import { getAppSetting, setAppSetting, APP_SETTING } from '../database.js';
 
 const router = Router();
 
-router.get('/', (_req: Request, res: Response) => {
+router.get('/', async (_req: Request, res: Response) => {
     try {
         const mnt_alert_threshold =
-            parseFloat(getAppSetting(APP_SETTING.MNT_ALERT_THRESHOLD, '2')) || 2;
+            parseFloat(await getAppSetting(APP_SETTING.MNT_ALERT_THRESHOLD, '2')) || 2;
         const mnt_low_reminder_hours =
-            parseInt(getAppSetting(APP_SETTING.MNT_LOW_REMINDER_HOURS, '24'), 10) || 24;
+            parseInt(await getAppSetting(APP_SETTING.MNT_LOW_REMINDER_HOURS, '24'), 10) || 24;
         res.json({ mnt_alert_threshold, mnt_low_reminder_hours });
     } catch (error) {
         console.error('Error reading settings:', error);
@@ -16,7 +16,7 @@ router.get('/', (_req: Request, res: Response) => {
     }
 });
 
-router.put('/', (req: Request, res: Response) => {
+router.put('/', async (req: Request, res: Response) => {
     try {
         const { mnt_alert_threshold, mnt_low_reminder_hours } = req.body;
 
@@ -32,7 +32,7 @@ router.put('/', (req: Request, res: Response) => {
             if (!Number.isFinite(t) || t <= 0) {
                 return res.status(400).json({ error: 'mnt_alert_threshold должен быть числом > 0' });
             }
-            setAppSetting(APP_SETTING.MNT_ALERT_THRESHOLD, String(t));
+            await setAppSetting(APP_SETTING.MNT_ALERT_THRESHOLD, String(t));
         }
 
         if (mnt_low_reminder_hours !== undefined) {
@@ -42,14 +42,14 @@ router.put('/', (req: Request, res: Response) => {
                     error: 'mnt_low_reminder_hours должен быть от 1 до 8760 (часов)',
                 });
             }
-            setAppSetting(APP_SETTING.MNT_LOW_REMINDER_HOURS, String(h));
+            await setAppSetting(APP_SETTING.MNT_LOW_REMINDER_HOURS, String(h));
         }
 
         const out = {
             mnt_alert_threshold:
-                parseFloat(getAppSetting(APP_SETTING.MNT_ALERT_THRESHOLD, '2')) || 2,
+                parseFloat(await getAppSetting(APP_SETTING.MNT_ALERT_THRESHOLD, '2')) || 2,
             mnt_low_reminder_hours:
-                parseInt(getAppSetting(APP_SETTING.MNT_LOW_REMINDER_HOURS, '24'), 10) || 24,
+                parseInt(await getAppSetting(APP_SETTING.MNT_LOW_REMINDER_HOURS, '24'), 10) || 24,
         };
         res.json(out);
     } catch (error) {

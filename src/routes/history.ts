@@ -1,54 +1,65 @@
 import { Router, Request, Response } from 'express';
-import { getDatabase } from '../database.js';
+import { accountsCollection, balanceHistoryCollection } from '../database.js';
 
 const router = Router();
 
-router.get('/all', (req: Request, res: Response) => {
+router.get('/all', async (req: Request, res: Response) => {
     try {
-        const db = getDatabase();
-        const { accountId, from, to, limit = 100 } = req.query;
-        
-        let query = `
-            SELECT bh.id, bh.account_id, a.name as account_name, bh.coin, bh.balance, bh.recorded_at
-            FROM balance_history bh
-            JOIN accounts a ON bh.account_id = a.id
-            WHERE bh.coin != 'PORTFOLIO_USD'
-        `;
-        const params: any[] = [];
-        
+        const { accountId, from, to, limit = '100' } = req.query;
+        const lim = Math.min(5000, Math.max(1, parseInt(String(limit), 10) || 100));
+
+        const match: Record<string, unknown> = { coin: { $ne: 'PORTFOLIO_USD' } };
         if (accountId) {
-            query += ' AND bh.account_id = ?';
-            params.push(accountId);
+            match.account_id = parseInt(String(accountId), 10);
         }
-        
-        if (from) {
-            query += ' AND bh.recorded_at >= ?';
-            params.push(from);
+        const recordedFilter: Record<string, string> = {};
+        if (from) recordedFilter.$gte = String(from);
+        if (to) recordedFilter.$lte = String(to);
+        if (Object.keys(recordedFilter).length > 0) {
+            match.recorded_at = recordedFilter;
         }
-        
-        if (to) {
-            query += ' AND bh.recorded_at <= ?';
-            params.push(to);
-        }
-        
-        query += ' ORDER BY bh.recorded_at DESC LIMIT ?';
-        params.push(parseInt(limit as string));
-        
-        const result = db.exec(query, params);
-        
-        if (result.length === 0 || result[0].values.length === 0) {
-            return res.json([]);
-        }
-        
-        const history = result[0].values.map((row: any[]) => ({
-            id: row[0],
-            accountId: row[1],
-            accountName: row[2],
-            coin: row[3],
-            balance: row[4],
-            recordedAt: row[5],
+
+        const pipeline: object[] = [
+            { $match: match },
+            {
+                $lookup: {
+                    from: 'accounts',
+                    localField: 'account_id',
+                    foreignField: '_id',
+                    as: 'acc',
+                },
+            },
+            { $unwind: '$acc' },
+            { $match: { 'acc.is_active': 1 } },
+            { $sort: { recorded_at: -1 } },
+            { $limit: lim },
+            {
+                $project: {
+                    _id: 1,
+                    account_id: 1,
+                    account_name: '$acc.name',
+                    coin: 1,
+                    balance: 1,
+                    recorded_at: 1,
+                },
+            },
+        ];
+
+        const rows = await balanceHistoryCollection()
+            .aggregate<{ _id: number; account_id: number; account_name: string; coin: string; balance: number; recorded_at: string }>(
+                pipeline
+            )
+            .toArray();
+
+        const history = rows.map((row) => ({
+            id: row._id,
+            accountId: row.account_id,
+            accountName: row.account_name,
+            coin: row.coin,
+            balance: row.balance,
+            recordedAt: row.recorded_at,
         }));
-        
+
         res.json(history);
     } catch (error) {
         console.error('Error fetching balance history:', error);
@@ -56,9 +67,8 @@ router.get('/all', (req: Request, res: Response) => {
     }
 });
 
-router.get('/chart', (req: Request, res: Response) => {
+router.get('/chart', async (req: Request, res: Response) => {
     try {
-        const db = getDatabase();
         const { period = '24h' } = req.query;
 
         let fromDate: string;
@@ -78,47 +88,55 @@ router.get('/chart', (req: Request, res: Response) => {
                 fromDate = '1970-01-01T00:00:00.000Z';
         }
 
-        // Только активные аккаунты — скрытые/«удалённые» не показываем на графиках
-        const accountsResult = db.exec(
-            'SELECT id, name FROM accounts WHERE is_active = 1 ORDER BY id'
-        );
-        const accounts = accountsResult.length > 0 ? accountsResult[0].values.map((row: any[]) => ({
-            id: row[0],
-            name: row[1]
-        })) : [];
+        const accountDocs = await accountsCollection().find({ is_active: 1 }).sort({ _id: 1 }).toArray();
+        const accounts = accountDocs.map((a) => ({ id: a._id, name: a.name }));
 
-        // График: одна точка на аккаунт на час — PORTFOLIO_USD (totalEquity), иначе legacy USDT
-        const historyResult = db.exec(
-            `
-            SELECT
-                bh.recorded_at,
-                bh.account_id,
-                a.name as account_name,
-                bh.balance,
-                bh.coin
-            FROM balance_history bh
-            JOIN accounts a ON bh.account_id = a.id AND a.is_active = 1
-            WHERE bh.recorded_at >= ?
-            ORDER BY bh.recorded_at ASC
-        `,
-            [fromDate]
-        );
+        const historyRows = await balanceHistoryCollection()
+            .aggregate<{
+                recorded_at: string;
+                account_id: number;
+                account_name: string;
+                balance: number;
+                coin: string;
+            }>([
+                { $match: { recorded_at: { $gte: fromDate } } },
+                {
+                    $lookup: {
+                        from: 'accounts',
+                        localField: 'account_id',
+                        foreignField: '_id',
+                        as: 'acc',
+                    },
+                },
+                { $unwind: '$acc' },
+                { $match: { 'acc.is_active': 1 } },
+                { $sort: { recorded_at: 1 } },
+                {
+                    $project: {
+                        recorded_at: 1,
+                        account_id: 1,
+                        balance: 1,
+                        coin: 1,
+                        account_name: '$acc.name',
+                    },
+                },
+            ])
+            .toArray();
 
-        if (historyResult.length === 0 || historyResult[0].values.length === 0) {
+        if (historyRows.length === 0) {
             return res.json({ accounts: [], data: {} });
         }
 
-        // Group by time slots (hourly)
         const timeSlots: Map<string, Map<number, number>> = new Map();
 
         type SlotSource = { balance: number; priority: number };
         const slotSources: Map<string, Map<number, SlotSource>> = new Map();
 
-        for (const row of historyResult[0].values) {
-            const timestamp = row[0] as string;
-            const accountId = row[1] as number;
-            const balance = row[3] as number;
-            const coin = String(row[4] ?? '');
+        for (const row of historyRows) {
+            const timestamp = row.recorded_at;
+            const accountId = row.account_id;
+            const balance = row.balance;
+            const coin = String(row.coin ?? '');
             if (coin !== 'PORTFOLIO_USD' && coin !== 'USDT') {
                 continue;
             }
@@ -146,7 +164,6 @@ router.get('/chart', (req: Request, res: Response) => {
             timeSlots.set(slotKey, m);
         }
 
-        // Build response
         const timestamps = Array.from(timeSlots.keys()).sort();
         const data: Record<string, Record<string, number>> = {};
 
@@ -158,8 +175,7 @@ router.get('/chart', (req: Request, res: Response) => {
             }
         }
 
-        // Build response with individual account data
-        const accountData: Record<string, { timestamps: string[], balances: number[] }> = {};
+        const accountData: Record<string, { timestamps: string[]; balances: number[] }> = {};
 
         for (const acc of accounts) {
             const accBalances: number[] = [];
@@ -172,15 +188,15 @@ router.get('/chart', (req: Request, res: Response) => {
 
             accountData[acc.name] = {
                 timestamps: accTimestamps,
-                balances: accBalances
+                balances: accBalances,
             };
         }
 
         res.json({
-            accounts: accounts.map((a: any) => a.name),
+            accounts: accounts.map((a) => a.name),
             timestamps: timestamps,
             data: data,
-            accountData: accountData
+            accountData: accountData,
         });
     } catch (error) {
         console.error('Error fetching chart data:', error);

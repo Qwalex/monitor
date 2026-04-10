@@ -1,4 +1,4 @@
-import { getDatabase, saveDatabase, getAppSetting, APP_SETTING } from './database.js';
+import { accountsCollection, getAppSetting, APP_SETTING } from './database.js';
 import type { CoinBalanceRow } from './bybit.js';
 
 function escapeHtml(s: string): string {
@@ -7,40 +7,37 @@ function escapeHtml(s: string): string {
 
 /**
  * После успешного получения балансов: если MNT &lt; порога — уведомление (Telegram/VK вызывают снаружи).
- * Порог и интервал напоминаний — в таблице `app_settings` (см. GET/PUT /api/settings).
+ * Порог и интервал напоминаний — в коллекции `app_settings` (см. GET/PUT /api/settings).
  */
-export function buildMntLowAlertHtmlIfNeeded(
+export async function buildMntLowAlertHtmlIfNeeded(
     accountId: number,
     accountName: string,
     coinRows: CoinBalanceRow[]
-): string | null {
-    const threshold = parseFloat(getAppSetting(APP_SETTING.MNT_ALERT_THRESHOLD, '2'));
+): Promise<string | null> {
+    const threshold = parseFloat(await getAppSetting(APP_SETTING.MNT_ALERT_THRESHOLD, '2'));
     if (!Number.isFinite(threshold) || threshold <= 0) {
         return null;
     }
 
-    const reminderHours = parseInt(getAppSetting(APP_SETTING.MNT_LOW_REMINDER_HOURS, '24'), 10) || 24;
+    const reminderHours = parseInt(await getAppSetting(APP_SETTING.MNT_LOW_REMINDER_HOURS, '24'), 10) || 24;
     const reminderMs = reminderHours * 3600000;
 
     const mntRow = coinRows.find((r) => r.coin.toUpperCase() === 'MNT');
-    const db = getDatabase();
 
     if (!mntRow || !Number.isFinite(mntRow.balance)) {
-        db.run('UPDATE accounts SET mnt_low_notified_at = NULL WHERE id = ?', [accountId]);
-        saveDatabase();
+        await accountsCollection().updateOne({ _id: accountId }, { $set: { mnt_low_notified_at: null } });
         return null;
     }
 
     const mnt = mntRow.balance;
 
     if (mnt >= threshold) {
-        db.run('UPDATE accounts SET mnt_low_notified_at = NULL WHERE id = ?', [accountId]);
-        saveDatabase();
+        await accountsCollection().updateOne({ _id: accountId }, { $set: { mnt_low_notified_at: null } });
         return null;
     }
 
-    const info = db.exec('SELECT mnt_low_notified_at FROM accounts WHERE id = ?', [accountId]);
-    const lastIso = info[0]?.values?.[0]?.[0] as string | null | undefined;
+    const acc = await accountsCollection().findOne({ _id: accountId }, { projection: { mnt_low_notified_at: 1 } });
+    const lastIso = acc?.mnt_low_notified_at ?? null;
     const now = Date.now();
 
     if (lastIso) {
@@ -51,8 +48,7 @@ export function buildMntLowAlertHtmlIfNeeded(
     }
 
     const isoNow = new Date().toISOString();
-    db.run('UPDATE accounts SET mnt_low_notified_at = ? WHERE id = ?', [isoNow, accountId]);
-    saveDatabase();
+    await accountsCollection().updateOne({ _id: accountId }, { $set: { mnt_low_notified_at: isoNow } });
 
     return `⚠️ <b>Низкий баланс MNT</b>
 

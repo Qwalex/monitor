@@ -17,7 +17,7 @@ import { startScheduler } from './scheduler.js';
 import { startServiceMonitoring, stopAllServiceMonitoring } from './services.js';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 /** Without this, `app.get("/monitor")` also matches `/monitor/` and runs redirect before the index handler — infinite redirect behind nginx. */
 app.set('strict routing', true);
 
@@ -95,7 +95,7 @@ async function main() {
         startScheduler();
 
         console.log('Starting service monitoring...');
-        startServiceMonitoring((service, isUp, downtime) => {
+        await startServiceMonitoring((service, isUp, downtime) => {
             if (isUp) {
                 sendServiceUpAlert(service, downtime);
             } else {
@@ -103,7 +103,7 @@ async function main() {
             }
         });
 
-        app.listen(PORT, () => {
+        app.listen(PORT, '0.0.0.0', () => {
             const ui = BASE_PATH ? `${BASE_PATH}/` : '/';
             console.log(`\n🚀 Server running at http://localhost:${PORT}${ui}\n`);
         });
@@ -113,18 +113,20 @@ async function main() {
     }
 }
 
+async function shutdown(): Promise<void> {
+    stopAllServiceMonitoring();
+    await closeDatabase();
+    process.exit(0);
+}
+
 process.on('SIGINT', () => {
     console.log('\nShutting down...');
-    stopAllServiceMonitoring();
-    closeDatabase();
-    process.exit(0);
+    void shutdown();
 });
 
 process.on('SIGTERM', () => {
     console.log('\nShutting down...');
-    stopAllServiceMonitoring();
-    closeDatabase();
-    process.exit(0);
+    void shutdown();
 });
 
 main();
