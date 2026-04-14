@@ -84,6 +84,13 @@ function formatRailwayMessage(payload: RailwayWebhookPayload): string {
     return lines.join('\n');
 }
 
+router.get('/webhook', (_req: Request, res: Response) => {
+    return res.status(200).json({
+        ok: true,
+        message: 'Railway webhook endpoint is alive. Use POST to send events.',
+    });
+});
+
 router.post('/webhook', async (req: Request, res: Response) => {
     const configuredToken = process.env.RAILWAY_WEBHOOK_TOKEN;
 
