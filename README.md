@@ -60,7 +60,7 @@ npm start
 
 ### Веб-интерфейс
 
-Откройте http://localhost:3000 в браузере.
+Откройте <http://localhost:3000> в браузере.
 
 - **Балансы** - текущие балансы всех аккаунтов
 - **График** - визуализация изменения баланса
@@ -69,6 +69,7 @@ npm start
 ### Telegram бот
 
 Команды:
+
 - `/start` - приветствие и помощь
 - `/accounts` - список аккаунтов и балансы
 - `/balance` - текущие балансы
@@ -84,10 +85,11 @@ npm start
 - `POST /api/balances/sync/:accountId` - синхронизировать баланс
 - `GET /api/history/all` - история изменений
 - `GET /api/history/chart` - данные для графика
+- `POST /api/railway/webhook` - приём событий Railway и отправка уведомлений
 
 ## Структура проекта
 
-```
+```text
 monitor/
 ├── src/
 │   ├── index.ts          # Точка входа
@@ -113,6 +115,21 @@ monitor/
    - либо скопируйте URI из карточки MongoDB в `MONGODB_URI`.
 5. Задайте `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` и при необходимости ключи VK (см. `.env.example`).
 6. Проверка готовности: `GET /api/health` (если используете `BASE_PATH`, путь будет `${BASE_PATH}/api/health` — тогда поправьте healthcheck в настройках деплоя Railway).
+
+### Webhook уведомления от Railway
+
+Чтобы получать события деплоя/алертов Railway в Telegram (или VK как fallback):
+
+1. Убедитесь, что заданы `TELEGRAM_BOT_TOKEN` и `TELEGRAM_CHAT_ID` (или VK переменные fallback).
+2. (Рекомендуется) добавьте переменную `RAILWAY_WEBHOOK_TOKEN` в Variables приложения.
+3. В Railway откройте **Project Settings → Webhooks** и добавьте URL:
+   - без `BASE_PATH`: `https://<ваш-домен>/api/railway/webhook`
+   - с `BASE_PATH=/monitor`: `https://<ваш-домен>/monitor/api/railway/webhook`
+4. Если используете токен, передайте его в заголовке:
+   - `Authorization: Bearer <RAILWAY_WEBHOOK_TOKEN>`
+   - или `x-railway-token: <RAILWAY_WEBHOOK_TOKEN>`
+
+После этого события Railway будут пересылаться в мессенджер.
 
 ## Docker
 

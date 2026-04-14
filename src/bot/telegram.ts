@@ -177,6 +177,33 @@ export async function sendHtmlWithFallback(html: string): Promise<void> {
     }
 }
 
+/** Send to Telegram and VK independently (no fallback behavior). */
+export async function sendHtmlToAll(html: string): Promise<void> {
+    let telegramSent = false;
+    let vkSent = false;
+
+    if (bot && authorizedChatId) {
+        try {
+            await bot.sendMessage(authorizedChatId, html, { parse_mode: 'HTML' });
+            telegramSent = true;
+        } catch (error) {
+            console.error('Telegram send failed:', error);
+        }
+    } else if (process.env.TELEGRAM_BOT_TOKEN && (!bot || !authorizedChatId)) {
+        console.warn('Telegram bot misconfigured or unavailable (no chat id or bot init failed)');
+    }
+
+    vkSent = await trySendVkPlain(htmlToPlain(html));
+
+    if (!telegramSent && !vkSent) {
+        if (!isVkConfigured()) {
+            console.warn('No messenger delivered message (Telegram unavailable and VK not configured)');
+        } else {
+            console.warn('No messenger delivered message (Telegram and VK send failed)');
+        }
+    }
+}
+
 async function getAccountsMessage(): Promise<string> {
     const docs = await accountsCollection()
         .find({ is_active: 1 })
