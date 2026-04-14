@@ -70,6 +70,7 @@ app.use(`${API_ROOT}/history`, historyRouter);
 app.use(`${API_ROOT}/services`, servicesRouter);
 app.use(`${API_ROOT}/settings`, settingsRouter);
 app.use(`${API_ROOT}/railway`, railwayRouter);
+app.use('/api/railway', railwayRouter);
 
 setWebhook(app, BASE_PATH);
 
