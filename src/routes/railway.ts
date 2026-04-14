@@ -90,8 +90,10 @@ router.post('/webhook', async (req: Request, res: Response) => {
     if (configuredToken) {
         const authHeader = req.header('authorization');
         const headerToken = getBearerToken(authHeader ?? undefined) ?? req.header('x-railway-token');
+        const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+        const providedToken = headerToken ?? queryToken;
 
-        if (headerToken !== configuredToken) {
+        if (providedToken !== configuredToken) {
             return res.status(401).json({ error: 'Unauthorized webhook request' });
         }
     }

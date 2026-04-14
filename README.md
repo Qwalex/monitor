@@ -125,7 +125,10 @@ monitor/
 3. В Railway откройте **Project Settings → Webhooks** и добавьте URL:
    - без `BASE_PATH`: `https://<ваш-домен>/api/railway/webhook`
    - с `BASE_PATH=/monitor`: `https://<ваш-домен>/monitor/api/railway/webhook`
-4. Если используете токен, передайте его в заголовке:
+4. Если используете токен, передайте его в webhook:
+   - самый простой способ для Railway: добавьте `?token=<RAILWAY_WEBHOOK_TOKEN>` в URL webhook;
+   - например: `https://<ваш-домен>/api/railway/webhook?token=<RAILWAY_WEBHOOK_TOKEN>`
+   - также поддерживаются заголовки (если отправитель умеет их задавать):
    - `Authorization: Bearer <RAILWAY_WEBHOOK_TOKEN>`
    - или `x-railway-token: <RAILWAY_WEBHOOK_TOKEN>`
 
