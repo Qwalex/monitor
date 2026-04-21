@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="apple-touch-icon" href="icon-192.png">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         :root {
             --bg-primary: #0d1117;
@@ -645,10 +645,34 @@
             position: relative;
             height: 300px;
             min-height: 300px;
+            width: 100%;
         }
 
         .chart-card {
             margin-top: 24px;
+        }
+
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .chart-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .chart-legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
         }
 
         .history-list {
@@ -1122,7 +1146,7 @@
                     </div>
                 </div>
                 <div class="chart-container" id="main-chart-container">
-                    <canvas id="balanceChart"></canvas>
+                    <div id="balanceChart"></div>
                 </div>
             </div>
             <div class="card chart-card">
@@ -1327,6 +1351,8 @@
     <script>
         const basePath = '__BASE_PATH__';
         let balanceChart = null;
+        let balanceChartSeries = [];
+        let balanceChartResizeObserver = null;
         let individualCharts = {};
         let currentPeriod = '24h';
 
@@ -1601,101 +1627,103 @@
                 const response = await fetch(basePath + `/api/history/chart?period=${currentPeriod}`);
                 const data = await response.json();
 
-                const ctx = document.getElementById('balanceChart').getContext('2d');
-
-                if (balanceChart) {
-                    balanceChart.destroy();
-                }
-
                 if (!data.accounts || data.accounts.length === 0) {
                     return;
                 }
-
-                const labels = data.timestamps.map((ts) => {
-                    const date = new Date(ts);
-                    return date.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                });
 
                 // Generate distinct colors for each account
                 const colors = [
                     '#58a6ff', '#3fb950', '#f85149', '#d29922', '#a371f7',
                     '#79c0ff', '#56d364', '#ff7b72', '#e3b341', '#bc8cff'
                 ];
+                const mainChartContainer = document.getElementById('main-chart-container');
+                const mainChartElement = document.getElementById('balanceChart');
+                mainChartElement.innerHTML = '';
 
-                const datasets = data.accounts.map((accountName, index) => ({
-                    label: accountName,
-                    data: data.timestamps.map((ts) => data.data[ts]?.[accountName] || 0),
-                    borderColor: colors[index % colors.length],
-                    backgroundColor: colors[index % colors.length] + '15',
-                    fill: false,
-                    tension: 0.4,
-                    pointRadius: 2,
-                    pointHoverRadius: 6,
-                }));
+                if (balanceChartResizeObserver) {
+                    balanceChartResizeObserver.disconnect();
+                    balanceChartResizeObserver = null;
+                }
 
-                balanceChart = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: datasets
+                if (balanceChart) {
+                    balanceChart.remove();
+                    balanceChart = null;
+                }
+                balanceChartSeries = [];
+
+                const chartHeight = Math.max(300, mainChartContainer.clientHeight || 300);
+                balanceChart = LightweightCharts.createChart(mainChartElement, {
+                    width: Math.max(mainChartElement.clientWidth, 320),
+                    height: chartHeight,
+                    layout: {
+                        background: { color: '#0d1117' },
+                        textColor: '#8b949e',
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: true,
-                                position: 'top',
-                                labels: {
-                                    color: '#c9d1d9',
-                                    usePointStyle: true,
-                                    padding: 20
-                                }
-                            },
-                            tooltip: {
-                                backgroundColor: '#161b22',
-                                titleColor: '#c9d1d9',
-                                bodyColor: '#c9d1d9',
-                                borderColor: '#30363d',
-                                borderWidth: 1,
-                                padding: 12,
-                                displayColors: true,
-                                callbacks: {
-                                    label: function(context) {
-                                        return context.parsed.y.toFixed(4);
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                grid: {
-                                    color: '#30363d',
-                                    drawBorder: false
-                                },
-                                ticks: {
-                                    color: '#8b949e',
-                                    maxTicksLimit: 8
-                                }
-                            },
-                            y: {
-                                grid: {
-                                    color: '#30363d',
-                                    drawBorder: false
-                                },
-                                ticks: {
-                                    color: '#8b949e'
-                                }
-                            }
-                        }
-                    }
+                    grid: {
+                        vertLines: { color: '#30363d' },
+                        horzLines: { color: '#30363d' },
+                    },
+                    crosshair: {
+                        mode: LightweightCharts.CrosshairMode.Normal,
+                    },
+                    rightPriceScale: {
+                        borderColor: '#30363d',
+                    },
+                    timeScale: {
+                        borderColor: '#30363d',
+                        timeVisible: true,
+                        secondsVisible: false,
+                        rightOffset: 5,
+                    },
+                    localization: {
+                        locale: 'ru-RU',
+                    },
                 });
+
+                data.accounts.forEach((accountName, index) => {
+                    const color = colors[index % colors.length];
+                    const series = balanceChart.addLineSeries({
+                        title: accountName,
+                        color,
+                        lineWidth: 2,
+                        priceLineVisible: false,
+                    });
+
+                    const seriesData = data.timestamps
+                        .map((ts) => {
+                            const value = data.data[ts]?.[accountName];
+                            if (value == null || Number.isNaN(Number(value))) {
+                                return null;
+                            }
+                            const time = Math.floor(new Date(ts).getTime() / 1000);
+                            return { time, value: Number(value) };
+                        })
+                        .filter(Boolean);
+
+                    series.setData(seriesData);
+                    balanceChartSeries.push({ accountName, color, series });
+                });
+
+                balanceChart.timeScale().fitContent();
+
+                balanceChartResizeObserver = new ResizeObserver(() => {
+                    if (!balanceChart) return;
+                    balanceChart.applyOptions({
+                        width: Math.max(mainChartElement.clientWidth, 320),
+                        height: Math.max(mainChartContainer.clientHeight || 300, 300),
+                    });
+                });
+                balanceChartResizeObserver.observe(mainChartContainer);
 
                 // Render individual charts for each account
                 const container = document.getElementById('individual-charts');
                 for (const k of Object.keys(individualCharts)) {
                     try {
-                        individualCharts[k].destroy();
+                        const chartRecord = individualCharts[k];
+                        if (chartRecord.observer) {
+                            chartRecord.observer.disconnect();
+                        }
+                        chartRecord.chart.remove();
                     } catch (e) {
                         /* noop */
                     }
@@ -1720,77 +1748,76 @@
                             <div class="card-header">
                                 <h2 class="card-title">${accountName}</h2>
                             </div>
+                            <div class="chart-legend">
+                                <span class="chart-legend-item">
+                                    <span class="chart-legend-dot" style="background: ${individualColors[index % individualColors.length]}"></span>
+                                    ${accountName}
+                                </span>
+                            </div>
                             <div class="chart-container">
-                                <canvas id="chart-${accountName.replace(/[^a-zA-Z0-9]/g, '-')}"></canvas>
+                                <div id="chart-${accountName.replace(/[^a-zA-Z0-9]/g, '-')}"></div>
                             </div>
                         `;
                         container.appendChild(card);
 
-                        const accCtx = card.querySelector('canvas').getContext('2d');
-                        const accLabels = accData.timestamps.map(ts => {
-                            const date = new Date(ts);
-                            return date.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                        const chartHost = card.querySelector('.chart-container > div');
+                        const accountChart = LightweightCharts.createChart(chartHost, {
+                            width: Math.max(chartHost.clientWidth, 320),
+                            height: Math.max(chartHost.parentElement.clientHeight || 300, 300),
+                            layout: {
+                                background: { color: '#0d1117' },
+                                textColor: '#8b949e',
+                            },
+                            grid: {
+                                vertLines: { color: '#30363d' },
+                                horzLines: { color: '#30363d' },
+                            },
+                            rightPriceScale: {
+                                borderColor: '#30363d',
+                            },
+                            timeScale: {
+                                borderColor: '#30363d',
+                                timeVisible: true,
+                                secondsVisible: false,
+                            },
+                            localization: {
+                                locale: 'ru-RU',
+                            },
                         });
 
-                        individualCharts[accountName] = new Chart(accCtx, {
-                            type: 'line',
-                            data: {
-                                labels: accLabels,
-                                datasets: [{
-                                    label: accountName,
-                                    data: accData.balances,
-                                    borderColor: individualColors[index % individualColors.length],
-                                    backgroundColor: individualColors[index % individualColors.length] + '15',
-                                    fill: true,
-                                    tension: 0.4,
-                                    pointRadius: 2,
-                                    pointHoverRadius: 6,
-                                }]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                    legend: {
-                                        display: false
-                                    },
-                                    tooltip: {
-                                        backgroundColor: '#161b22',
-                                        titleColor: '#c9d1d9',
-                                        bodyColor: '#c9d1d9',
-                                        borderColor: '#30363d',
-                                        borderWidth: 1,
-                                        padding: 12,
-                                        callbacks: {
-                                            label: function(context) {
-                                                return context.parsed.y.toFixed(4);
-                                            }
-                                        }
-                                    }
-                                },
-                                scales: {
-                                    x: {
-                                        grid: {
-                                            color: '#30363d',
-                                            drawBorder: false
-                                        },
-                                        ticks: {
-                                            color: '#8b949e',
-                                            maxTicksLimit: 8
-                                        }
-                                    },
-                                    y: {
-                                        grid: {
-                                            color: '#30363d',
-                                            drawBorder: false
-                                        },
-                                        ticks: {
-                                            color: '#8b949e'
-                                        }
-                                    }
-                                }
-                            }
+                        const accountSeries = accountChart.addAreaSeries({
+                            lineColor: individualColors[index % individualColors.length],
+                            topColor: `${individualColors[index % individualColors.length]}55`,
+                            bottomColor: `${individualColors[index % individualColors.length]}11`,
+                            lineWidth: 2,
+                            priceLineVisible: false,
                         });
+
+                        const accountSeriesData = accData.timestamps
+                            .map((ts, idx) => {
+                                const value = accData.balances[idx];
+                                if (value == null || Number.isNaN(Number(value))) {
+                                    return null;
+                                }
+                                return {
+                                    time: Math.floor(new Date(ts).getTime() / 1000),
+                                    value: Number(value),
+                                };
+                            })
+                            .filter(Boolean);
+
+                        accountSeries.setData(accountSeriesData);
+                        accountChart.timeScale().fitContent();
+
+                        const observer = new ResizeObserver(() => {
+                            accountChart.applyOptions({
+                                width: Math.max(chartHost.clientWidth, 320),
+                                height: Math.max(chartHost.parentElement.clientHeight || 300, 300),
+                            });
+                        });
+                        observer.observe(chartHost.parentElement);
+
+                        individualCharts[accountName] = { chart: accountChart, observer };
                     });
                 }
             } catch (error) {
